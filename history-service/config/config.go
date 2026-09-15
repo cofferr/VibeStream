@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"sync"
 
@@ -26,10 +27,15 @@ func GetConfig() *Config {
 		// Cargar .env solo si existe
 		_ = godotenv.Load()
 
+		jwtSecret := getEnv("JWT_SECRET", "")
+		if jwtSecret == "" {
+			log.Fatal("❌ JWT_SECRET es requerido")
+		}
+
 		instance = &Config{
-			Port:           getEnv("HISTORY_PORT", "8005"),
-			JWTSecret:      getEnv("JWT_SECRET", "defaultsecret"),
-			DBURL:          getEnv("DB_URL", "postgres://user:pass@localhost:5432/dbname?sslmode=disable"),
+			Port:      getEnv("HISTORY_PORT", "8005"),
+			JWTSecret: jwtSecret,
+			DBURL:     getEnv("DB_URL", "postgres://user:pass@localhost:5432/dbname?sslmode=disable"),
 			// Por defecto en docker-compose el host del broker es `rabbitmq` y el puerto 5672
 			RabbitURL:      getEnv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/"),
 			AllowedOrigins: parseOrigins(getEnv("ALLOWED_ORIGINS", "*")),

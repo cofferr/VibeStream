@@ -18,16 +18,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/health") or request.url.path.startswith("/files"):
             return await call_next(request)
 
-        print(f"🔍 Headers recibidos: {dict(request.headers)}")
-        
         try:
             auth = HTTPBearer(auto_error=False)
             credentials = await auth(request)
-            
-            print(f"🔍 Credentials: {credentials}")
-            
+
             if credentials is None:
-                print("❌ No se encontró header Authorization")
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Falta header Authorization"},
@@ -38,27 +33,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
 
             token = credentials.credentials
-            print(f"🔍 Token recibido: {token}")
 
             # Verificar expiración manualmente primero
-            try:
-                decoded_without_verify = jwt.decode(token, options={"verify_signature": False})
-                print(f"🔍 Token decodificado (sin verificar): {decoded_without_verify}")
-                
-                # Verificar expiración
-                exp = decoded_without_verify.get('exp')
-                if exp and exp < time.time():
-                    print(f"❌ Token expirado. Exp: {exp}, Now: {time.time()}")
-                    raise jwt.ExpiredSignatureError("Token expirado")
-                    
-            except Exception as e:
-                print(f"❌ Error en decodificación básica: {e}")
-                raise
+            decoded_without_verify = jwt.decode(token, options={"verify_signature": False})
+            exp = decoded_without_verify.get('exp')
+            if exp and exp < time.time():
+                raise jwt.ExpiredSignatureError("Token expirado")
 
-            # Ahora verificar con el secret
-            print(f"🔍 Verificando con secret: {settings.jwt_secret[:10]}...")  # Solo mostrar parte del secret
-            print(f"🔍 Algorithm: {settings.jwt_algorithm}")
-            
             payload = jwt.decode(
                 token,
                 settings.jwt_secret,
@@ -68,8 +49,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "require": list(REQUIRED_CLAIMS),
                 },
             )
-            
-            print(f"✅ Token válido. Payload: {payload}")
 
             request.state.user = {
                 "user_id": payload["user_id"],
@@ -80,8 +59,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             return await call_next(request)
             
-        except jwt.ExpiredSignatureError as e:
-            print(f"❌ Token expirado: {e}")
+        except jwt.ExpiredSignatureError:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Token expirado"},
@@ -90,9 +68,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "Access-Control-Allow-Credentials": "true",
                 }
             )
-        except jwt.InvalidSignatureError as e:
-            print(f"❌ Firma no válida: {e}")
-            print(f"❌ ¿El JWT_SECRET coincide con el del servicio de auth?")
+        except jwt.InvalidSignatureError:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Firma no válida"},
@@ -102,18 +78,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 }
             )
         except jwt.MissingRequiredClaimError as e:
-            print(f"❌ Falta claim requerido: {e}")
-            print(f"❌ Claims requeridos: {REQUIRED_CLAIMS}")
             return JSONResponse(
                 status_code=400,
                 content={"detail": f"Falta claim: {e.claim}"},
                 headers={
-                    "Access-Control-Allow-Origin": "http://localhost:5173", 
+                    "Access-Control-Allow-Origin": "http://localhost:5173",
                     "Access-Control-Allow-Credentials": "true",
                 }
             )
-        except jwt.InvalidTokenError as e:
-            print(f"❌ Token inválido: {e}")
+        except jwt.InvalidTokenError:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Token inválido"},
@@ -124,8 +97,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
         except Exception as e:
             print(f"❌ Error inesperado en auth: {e}")
-            import traceback
-            traceback.print_exc()
             return JSONResponse(
                 status_code=500,
                 content={"detail": "Error en autenticación"},

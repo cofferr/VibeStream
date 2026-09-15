@@ -39,9 +39,8 @@ class Settings(BaseSettings):
 
 settings = Settings()  # type: ignore
 
-# Logs de configuración
+# Logs de configuración (sin exponer secretos)
 print(f"🔧 Config loaded:")
-print(f"   JWT Secret: {settings.jwt_secret}")
 print(f"   JWT Algorithm: {settings.jwt_algorithm}")
 print(f"   Port: {settings.port}")
 print(f"   Frontend Origins: {settings.frontend_origins}")

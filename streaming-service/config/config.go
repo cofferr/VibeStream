@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -34,9 +35,14 @@ func GetConfig() *Config {
 		origins := getEnv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
 		allowedOrigins := strings.Split(origins, ",")
 
+		jwtSecret := getEnv("JWT_SECRET", "")
+		if jwtSecret == "" {
+			log.Fatal("❌ JWT_SECRET es requerido")
+		}
+
 		instance = &Config{
 			Port:           getEnv("STREAMING_PORT", "8001"),
-			JWTSecret:      getEnv("JWT_SECRET", "defaultsecret"),
+			JWTSecret:      jwtSecret,
 			DBURL:          getEnv("DB_URL", "postgres://user:pass@localhost:5432/dbname?sslmode=disable"),
 			// Por defecto apuntar al broker 'rabbitmq' presente en docker-compose
 			RabbitURL:      getEnv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/"),

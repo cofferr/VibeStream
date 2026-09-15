@@ -22,7 +22,7 @@ var AppConfig *Config
 func LoadConfig() *Config {
 	config := &Config{
 		DatabaseURL:    getEnvOrDefault("DB_URL", ""),
-		JWTSecret:      getEnvOrDefault("JWT_SECRET", "HolaMundoo"),
+		JWTSecret:      getEnvOrDefault("JWT_SECRET", ""),
 		Port:           getEnvOrDefault("AUTH_PORT", getEnvOrDefault("PORT", "8080")),
 		AllowedOrigins: parseOrigins(getEnvOrDefault("ALLOWED_ORIGINS", "*")),
 	}
@@ -44,6 +44,10 @@ func LoadConfig() *Config {
 
 	if config.DatabaseURL == "" {
 		log.Fatal("❌ DB_URL es requerido")
+	}
+
+	if config.JWTSecret == "" {
+		log.Fatal("❌ JWT_SECRET es requerido")
 	}
 
 	AppConfig = config
