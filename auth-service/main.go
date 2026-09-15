@@ -70,7 +70,7 @@ func main() {
 	r.POST("/refresh", handlers.Refresh(authService))
 
 	// Rutas protegidas
-	auth := r.Group("/", middleware.AuthMiddleware())
+	auth := r.Group("/", middleware.AuthMiddleware(cfg.JWTSecret))
 	auth.POST("/logout", handlers.Logout(authService))
 	auth.PUT("/update", handlers.UpdateUser(userService))
 	auth.GET("/user/me", handlers.GetCurrentUser(userService))

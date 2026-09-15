@@ -1,10 +1,10 @@
 from config import settings
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
 from core.handlers.album_handler import router as album_router
 from core.handlers.song_handler import router as song_router
 from middleware.auth_middleware import AuthMiddleware
+from vibestream_common.errors import make_global_exception_handler
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -69,18 +69,14 @@ def health_check():
 
 
 # Manejo global de excepciones para asegurar headers CORS
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception("Error no manejado en %s %s", request.method, request.url.path)
-
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"},
-        headers={
-            "Access-Control-Allow-Origin": "http://localhost:5173",
-            "Access-Control-Allow-Credentials": "true",
-        },
-    )
+app.add_exception_handler(
+    Exception,
+    make_global_exception_handler(
+        cors_origin=settings.frontend_origins[0]
+        if settings.frontend_origins != ["*"]
+        else "*"
+    ),
+)
 
 
 if __name__ == "__main__":

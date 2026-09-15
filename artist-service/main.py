@@ -1,21 +1,16 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
 from handlers.artist_handler import router as artist_router
 from middleware.auth_middleware import AuthMiddleware
 from config import settings
+from vibestream_common.errors import make_global_exception_handler
 import uvicorn
 import logging
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Artist Service", version="0.1")
-
-# Servir archivos de directorio de almacenamiento
-
-# Debug: Verificar los orígenes permitidos
-print("Allowed origins:", settings.frontend_origins)
 
 # Configuración de CORS - DEBE IR PRIMERO
 app.add_middleware(
@@ -39,18 +34,14 @@ def health_check():
 
 
 # Manejo global de excepciones para asegurar headers CORS
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception("Error no manejado en %s %s", request.method, request.url.path)
-
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"},
-        headers={
-            "Access-Control-Allow-Origin": "http://localhost:5173",
-            "Access-Control-Allow-Credentials": "true",
-        },
-    )
+app.add_exception_handler(
+    Exception,
+    make_global_exception_handler(
+        cors_origin=settings.frontend_origins[0]
+        if settings.frontend_origins != ["*"]
+        else "*"
+    ),
+)
 
 
 # Permitir ejecución directa con python3 main.py

@@ -1,25 +1,13 @@
 from pydantic import Field
-from pydantic_settings import BaseSettings
-from typing import List, Optional
+from typing import Optional
 import boto3
-import json
-import logging
 
-logger = logging.getLogger(__name__)
+from vibestream_common.config import BaseServiceSettings
 
 
-class Settings(BaseSettings):
-    # === DATABASE & APP CONFIG ===
-    db_url: str = Field(alias="db_url_py")
-    jwt_secret: str = Field(alias="JWT_SECRET")
-    jwt_algorithm: str = Field(alias="JWT_ALGORITHM", default="HS256")
+class Settings(BaseServiceSettings):
     port: int = Field(alias="ARTIST_PORT", default=8002)
     rabbitmq_url: str = Field(alias="RABBITMQ_URL")
-
-    # === CORS ===
-    frontend_origins_raw: str = Field(
-        alias="FRONTEND_ORIGINS", default="http://localhost:5173"
-    )
 
     # === AWS S3 CONFIG ===
     aws_access_key_id: str = Field(alias="AWS_ACCESS_KEY_ID")
@@ -33,31 +21,6 @@ class Settings(BaseSettings):
     allowed_image_types: list = Field(
         default=["image/jpeg", "image/png", "image/jpg", "image/gif"]
     )
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-
-    @property
-    def frontend_origins(self) -> List[str]:
-        raw = self.frontend_origins_raw
-        if not raw or raw.strip() == "":
-            return ["*"]  # Permitir todos si no está configurado
-        s = raw.strip()
-        if s == "*":
-            return ["*"]  # Wildcard explícito
-        if s.startswith("[") and s.endswith("]"):
-            try:
-                parsed = json.loads(s)
-                if isinstance(parsed, list):
-                    return [str(x).strip() for x in parsed if x]
-            except Exception:
-                logger.warning(
-                    "FRONTEND_ORIGINS parece una lista JSON pero no pudo parsearse; "
-                    "se usará el parseo por comas como fallback: %r",
-                    raw,
-                )
-        return [p.strip() for p in s.split(",") if p.strip()]
 
     def get_s3_client(self):
         """Devuelve un cliente boto3 configurado para S3."""
@@ -79,8 +42,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore
-
-print(f"🔧 Configuración cargada:")
-print(f"   AWS Región: {settings.aws_region}")
-print(f"   AWS Bucket: {settings.aws_s3_bucket}")
-print(f"   URL Base:   {settings.get_public_base_url()}")

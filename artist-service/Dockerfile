@@ -1,4 +1,3 @@
-
 # ======================================
 # Etapa 1: Base para dependencias
 # ======================================
@@ -18,8 +17,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Definir directorio de trabajo
 WORKDIR /app
 
+# Instalar el paquete compartido vibestream_common antes que las
+# dependencias propias del servicio para aprovechar el cache de Docker
+# (el build context es la raíz del repo, ver docker-compose.yml)
+COPY shared-python /shared-python
+RUN pip install --no-cache-dir /shared-python
+
 # Copiar solo requirements para aprovechar cache de Docker
-COPY requirements.txt .
+COPY artist-service/requirements.txt .
 
 # Instalar dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt
@@ -32,7 +37,7 @@ FROM base AS runtime
 WORKDIR /app
 
 # Copiar todo el código del microservicio
-COPY . .
+COPY artist-service/ .
 
 # Exponer el puerto dinámico desde variable de entorno
 ARG SERVICE_PORT

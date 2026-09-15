@@ -7,10 +7,7 @@ import uvicorn
 
 app = FastAPI(title="Search Service", version="0.1")
 
-# debug: Verificar orígenes permitidos
-print("Allowed origins:", settings.frontend_origins)
-
-#configuración de CORS - DEBE IR PRIMERO
+# configuración de CORS - DEBE IR PRIMERO
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.frontend_origins,

@@ -11,7 +11,10 @@ require (
 	golang.org/x/crypto v0.39.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.1
+	vibestream/shared v0.0.0
 )
+
+replace vibestream/shared => ../shared-go
 
 require (
 	github.com/bytedance/sonic v1.13.3 // indirect

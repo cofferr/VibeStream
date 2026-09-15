@@ -19,7 +19,8 @@ services:
 
   artist-service:
     build:
-      context: ./artist-service
+      context: .
+      dockerfile: artist-service/Dockerfile
       args:
         - SERVICE_NAME=artist-service
         - SERVICE_PORT=${ARTIST_PORT:-8002}
@@ -35,7 +36,8 @@ services:
 
   content-service:
     build:
-      context: ./content-service
+      context: .
+      dockerfile: content-service/Dockerfile
       args:
         - SERVICE_NAME=content-service
         - SERVICE_PORT=${CONTENT_PORT:-8001}
@@ -51,7 +53,8 @@ services:
 
   playlist-service:
     build:
-      context: ./playlist-service
+      context: .
+      dockerfile: playlist-service/Dockerfile
       args:
         - SERVICE_NAME=playlist-service
         - SERVICE_PORT=${PLAYLIST_PORT:-8004}
@@ -67,7 +70,8 @@ services:
 
   search-service:
     build:
-      context: ./search-service
+      context: .
+      dockerfile: search-service/Dockerfile
       args:
         - SERVICE_NAME=search-service
         - SERVICE_PORT=${SEARCH_PORT:-8006}
@@ -83,7 +87,8 @@ services:
 
   subscription-service:
     build:
-      context: ./subscription-service
+      context: .
+      dockerfile: subscription-service/Dockerfile
       args:
         - SERVICE_NAME=subscription-service
         - SERVICE_PORT=${SUBSCRIPTION_PORT:-8007}
@@ -99,7 +104,8 @@ services:
 
   auth-service:
     build:
-      context: ./auth-service
+      context: .
+      dockerfile: auth-service/Dockerfile
       args:
         - SERVICE_NAME=auth-service
         - SERVICE_PORT=${AUTH_PORT:-8080}
@@ -115,7 +121,8 @@ services:
 
   history-service:
     build:
-      context: ./history-service
+      context: .
+      dockerfile: history-service/Dockerfile
       args:
         - SERVICE_NAME=history-service
         - SERVICE_PORT=${HISTORY_PORT:-8005}
@@ -131,7 +138,8 @@ services:
 
   streaming-service:
     build:
-      context: ./streaming-service
+      context: .
+      dockerfile: streaming-service/Dockerfile
       args:
         - SERVICE_NAME=streaming-service
         - SERVICE_PORT=${STREAMING_PORT:-8003}

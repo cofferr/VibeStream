@@ -1,29 +1,7 @@
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import DeclarativeBase
 from config import settings
+from vibestream_common.db import Base, make_engine_and_session, make_get_db
 
-# Motor asincrónico
-engine = create_async_engine(
-    settings.db_url,
-    pool_size=5,
-    max_overflow=5,
-    pool_timeout=30,
-    pool_recycle=1800,
-    echo=False,  
-)
+engine, AsyncSessionLocal = make_engine_and_session(settings.db_url)
+get_db = make_get_db(AsyncSessionLocal)
 
-# Factory de sesiones asincrónicas (SQLAlchemy 2.0)
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    expire_on_commit=False,
-)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        yield session
+__all__ = ["Base", "engine", "AsyncSessionLocal", "get_db"]

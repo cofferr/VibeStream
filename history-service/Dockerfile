@@ -10,12 +10,17 @@ FROM golang:1.24.5 AS builder
 # Definir directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de dependencias primero para aprovechar cache de Docker
-COPY go.mod go.sum ./
+# Copiar el módulo compartido (vibestream/shared) antes que el código del
+# servicio, para aprovechar el cache de Docker. El build context es la
+# raíz del repo (ver docker-compose.yml).
+COPY shared-go /shared-go
+
+# Copiar archivos de dependencias del servicio y descargarlas
+COPY history-service/go.mod history-service/go.sum ./
 RUN go mod download
 
-# Copiar el resto del código fuente
-COPY . .
+# Copiar el resto del código fuente del servicio
+COPY history-service/ .
 
 # ARG para el nombre del servicio (se pasa desde docker-compose)
 ARG SERVICE_NAME=service
