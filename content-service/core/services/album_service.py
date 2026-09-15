@@ -153,6 +153,15 @@ class AlbumService:
 
         return album
 
+    async def delete_albums_by_artist(self, artist_id: int) -> None:
+        """Elimina todos los álbumes (y sus canciones/archivos S3) de un
+        artista. Lo llama artist-service al borrar un artista: ya no tiene
+        acceso directo a albums/songs, así que delega el cascade completo
+        aquí en vez de hacerlo con SQL cross-schema."""
+        albums = await self.repo.list_by_artist(artist_id)
+        for album in albums:
+            await self.delete_album(album)
+
     async def delete_album(self, album: Album) -> None:
         """Elimina un álbum y todos sus archivos de S3"""
         # Eliminar imagen de portada de S3 si existe

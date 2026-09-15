@@ -60,10 +60,18 @@ async def handle_artist_created(message: AbstractIncomingMessage) -> None:
 
 
 async def consume_events():
-    """Suscripción a la cola de eventos de artistas"""
+    """Suscripción a eventos de artistas vía exchange fanout: content-service
+    y search-service consumen el mismo evento artist_created cada uno con su
+    propia cola nombrada, para no repartirse los mensajes entre sí."""
     connection = await aio_pika.connect_robust(settings.rabbitmq_url)
     channel = await connection.channel()
-    queue = await channel.declare_queue("artist_created", durable=True)
+    exchange = await channel.declare_exchange(
+        "artist_created", aio_pika.ExchangeType.FANOUT, durable=True
+    )
+    queue = await channel.declare_queue(
+        "content_service.artist_created", durable=True
+    )
+    await queue.bind(exchange)
     await queue.consume(handle_artist_created)
     print("[*] Esperando eventos artist_created...")
     return connection

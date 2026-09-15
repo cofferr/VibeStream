@@ -1,12 +1,12 @@
 # song_handler.py
-from fastapi import APIRouter, Depends, Request, File, UploadFile, Form, HTTPException
+from fastapi import APIRouter, Depends, Request, File, UploadFile, Form, HTTPException, Query
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.db.connection import get_db
 from core.repositories.song_repository import SongRepository
 from core.repositories.album_repository import AlbumRepository
 from core.services.song_service import SongService
-from core.entities.song import SongOut, SongCreateFormData
+from core.entities.song import SongOut, SongCreateFormData, SongEnrichedOut
 from utils.json_response import success_response, error_response
 from typing import Optional
 from utils.audio_validation import validate_audio_file
@@ -16,6 +16,28 @@ from utils.ownership import (
 )  # 🔹 Importar validación de ownership
 
 router = APIRouter(prefix="/songs", tags=["songs"])
+
+
+# === Rutas "específicas" (literales) van ANTES de /{song_id} ===
+@router.get("/batch", response_model=dict)
+async def get_songs_batch(
+    ids: str = Query(..., description="IDs de canciones separados por comas"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Endpoint público de lectura: resuelve un lote de song_ids con álbum
+    y artista ya enriquecidos. Usado por playlist-service (sus playlists
+    solo guardan song_id) y por search-service para evitar N llamadas."""
+    try:
+        song_ids = [int(i.strip()) for i in ids.split(",") if i.strip()]
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="ids debe ser una lista de números separados por comas"
+        )
+
+    service = SongService(SongRepository(db))
+    songs = await service.list_songs_with_info(song_ids)
+    enriched = [SongEnrichedOut.from_song(song).model_dump() for song in songs]
+    return success_response({"songs": enriched}, "Canciones recuperadas correctamente")
 
 
 @router.post("/", response_model=dict)
@@ -108,6 +130,20 @@ async def get_song(song_id: int, db: AsyncSession = Depends(get_db)):
     if not song:
         return error_response(404, "Canción no encontrada")
     schema = SongOut.model_validate(song)
+    return success_response(schema.model_dump(), "Canción recuperada correctamente")
+
+
+@router.get("/{song_id}/enriched", response_model=dict)
+async def get_song_enriched(song_id: int, db: AsyncSession = Depends(get_db)):
+    """Endpoint público de lectura con álbum/artista ya resueltos. Devuelve
+    un 404 HTTP real (no un 200 con {"status": "error"}) porque lo llaman
+    otros servicios (playlist-service, search-service) que necesitan
+    distinguir "no existe" de "el body no cumplió el schema esperado"."""
+    service = SongService(SongRepository(db))
+    song = await service.get_song_with_info(song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="Canción no encontrada")
+    schema = SongEnrichedOut.from_song(song)
     return success_response(schema.model_dump(), "Canción recuperada correctamente")
 
 

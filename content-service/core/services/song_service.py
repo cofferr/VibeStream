@@ -299,3 +299,12 @@ class SongService:
     async def get_song(self, song_id: int) -> Song | None:
         """Obtiene una canción por ID"""
         return await self.repo.get_by_id(song_id)
+
+    async def get_song_with_info(self, song_id: int) -> Song | None:
+        """Obtiene una canción con álbum/artista precargados (endpoint
+        público consumido por otros servicios)."""
+        return await self.repo.get_by_id_with_info(song_id)
+
+    async def list_songs_with_info(self, song_ids: list[int]) -> list[Song]:
+        """Batch de canciones con álbum/artista precargados."""
+        return list(await self.repo.list_by_ids_with_info(song_ids))

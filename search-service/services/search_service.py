@@ -36,7 +36,7 @@ class SearchService:
                     serialized_songs.append(serialized)
             except Exception:
                 logger.exception(
-                    "Error serializando canción %s", getattr(song, "id", "unknown")
+                    "Error serializando canción %s", getattr(song, "entity_id", "unknown")
                 )
                 continue
 
@@ -48,7 +48,7 @@ class SearchService:
                     serialized_albums.append(serialized)
             except Exception:
                 logger.exception(
-                    "Error serializando álbum %s", getattr(album, "id", "unknown")
+                    "Error serializando álbum %s", getattr(album, "entity_id", "unknown")
                 )
                 continue
 
@@ -60,7 +60,7 @@ class SearchService:
                     serialized_artists.append(serialized)
             except Exception:
                 logger.exception(
-                    "Error serializando artista %s", getattr(artist, "id", "unknown")
+                    "Error serializando artista %s", getattr(artist, "entity_id", "unknown")
                 )
                 continue
 

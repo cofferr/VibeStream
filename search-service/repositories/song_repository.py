@@ -1,8 +1,8 @@
 # song_repository.py
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload, joinedload
-from database.models import Song, Album, Artist, User
+from sqlalchemy import select
+from database.models import SearchIndexEntry
+
 
 class SongRepository:
     def __init__(self, session: AsyncSession):
@@ -10,12 +10,11 @@ class SongRepository:
 
     async def get_by_title_ilike(self, query: str, limit: int, offset: int):
         stmt = (
-            select(Song)
-            .options(
-                selectinload(Song.album).selectinload(Album.artist).selectinload(Artist.user),
-                selectinload(Song.artists).selectinload(Artist.user)
+            select(SearchIndexEntry)
+            .where(
+                SearchIndexEntry.entity_type == "song",
+                SearchIndexEntry.title.ilike(f"%{query}%"),
             )
-            .where(Song.title.ilike(f"%{query}%"))
             .limit(limit)
             .offset(offset)
         )

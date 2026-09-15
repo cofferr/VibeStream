@@ -72,6 +72,15 @@ type UserDetailResponse struct {
 	LastPasswordChange interface{} `json:"last_password_change"`
 }
 
+// PublicUserResponse representa los campos públicos de un usuario, seguros
+// de exponer sin autenticación a otros servicios internos (playlist-service,
+// subscription-service) que hoy leen la tabla users directamente.
+type PublicUserResponse struct {
+	ID       uint   `json:"id"`
+	Username string `json:"username"`
+	Name     string `json:"name"`
+}
+
 // UserServiceInterface define las operaciones disponibles para gestionar usuarios.
 type UserServiceInterface interface {
 	// RegisterUser registra un nuevo usuario en la base de datos.
@@ -82,6 +91,10 @@ type UserServiceInterface interface {
 
 	// GetUserDetails obtiene los detalles completos de un usuario.
 	GetUserDetails(userID uint) (*UserDetailResponse, error)
+
+	// GetPublicUser obtiene únicamente los campos públicos de un usuario,
+	// para consumo de otros servicios internos sin exponer email/password.
+	GetPublicUser(userID uint) (*PublicUserResponse, error)
 }
 
 // UserService implementa UserServiceInterface usando un repositorio de usuarios.
@@ -264,6 +277,20 @@ func (s *UserService) GetUserDetails(userID uint) (*UserDetailResponse, error) {
 		LastUsernameChange: formatTimePointer(user.LastUsernameChange),
 		LastEmailChange:    formatTimePointer(user.LastEmailChange),
 		LastPasswordChange: formatTimePointer(user.LastPasswordChange),
+	}, nil
+}
+
+// GetPublicUser devuelve únicamente los campos públicos de un usuario.
+func (s *UserService) GetPublicUser(userID uint) (*PublicUserResponse, error) {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	return &PublicUserResponse{
+		ID:       user.ID,
+		Username: user.Username,
+		Name:     user.Name,
 	}, nil
 }
 

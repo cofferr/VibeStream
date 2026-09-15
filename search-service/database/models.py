@@ -1,82 +1,36 @@
-from sqlalchemy import Column, Integer, String, Text, Date, ForeignKey, JSON, Table
-from sqlalchemy.orm import relationship
+"""search-service es dueño exclusivo de search_index (Fase 3/4).
+
+Ya no lee songs/albums/artists directo de la BD compartida: mantiene un
+índice local desnormalizado, alimentado por eventos RabbitMQ publicados por
+content-service (song_created/updated, album_created/updated) y
+artist-service (artist_created/updated). Es el patrón CQRS correcto para
+búsqueda difusa con rapidfuzz — evitar N llamadas HTTP síncronas por cada
+búsqueda, que serían demasiado lentas."""
+
+from sqlalchemy import Column, Integer, String, Text, DateTime, UniqueConstraint, func
+
 from database.connection import Base
 
-# Tabla intermedia para relación many-to-many
-song_artists = Table(
-    "song_artists",
-    Base.metadata,
-    Column(
-        "song_id", Integer, ForeignKey("music_streaming.songs.id"), primary_key=True
-    ),
-    Column(
-        "artist_id", Integer, ForeignKey("music_streaming.artists.id"), primary_key=True
-    ),
-    schema="music_streaming",
-)
 
-
-class User(Base):
-    __tablename__ = "users"
-    __table_args__ = {"schema": "music_streaming"}
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    username = Column(String, unique=True, index=True)
-    artist = relationship("Artist", back_populates="user", uselist=False)
-
-
-class Artist(Base):
-    __tablename__ = "artists"
-    __table_args__ = {"schema": "music_streaming"}
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(
-        Integer, ForeignKey("music_streaming.users.id"), unique=True, nullable=False
+class SearchIndexEntry(Base):
+    __tablename__ = "search_index"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", name="uq_search_index_entity"),
+        {"schema": "music_streaming"},
     )
-    artist_name = Column(String, nullable=False, unique=True)
-    bio = Column(Text)
-    profile_pic = Column(Text)
-    social_links = Column(JSON)
-    created_at = Column(Date)
-    updated_at = Column(Date)
 
-    albums = relationship("Album", back_populates="artist")
-    user = relationship("User", back_populates="artist", uselist=False)
-    songs = relationship("Song", secondary=song_artists, back_populates="artists")
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    entity_type = Column(String, nullable=False, index=True)  # "song" | "album" | "artist"
+    entity_id = Column(Integer, nullable=False, index=True)
 
+    title = Column(String, nullable=False, index=True)
+    subtitle = Column(String, nullable=True)  # artista de la canción/álbum
+    cover_url = Column(Text, nullable=True)
+    audio_url = Column(Text, nullable=True)
 
-class Album(Base):
-    __tablename__ = "albums"
-    __table_args__ = {"schema": "music_streaming"}
+    artist_id = Column(Integer, nullable=True, index=True)
+    album_id = Column(Integer, nullable=True, index=True)
+    duration = Column(Integer, nullable=True)
+    track_number = Column(Integer, nullable=True)
 
-    id = Column(Integer, primary_key=True, index=True)
-    artist_id = Column(
-        Integer, ForeignKey("music_streaming.artists.id"), nullable=False
-    )
-    title = Column(String, nullable=False)
-    release_date = Column(Date)
-    cover_url = Column(Text)
-    created_at = Column(Date)
-    updated_at = Column(Date)
-
-    artist = relationship("Artist", back_populates="albums")
-    songs = relationship("Song", back_populates="album")
-
-
-class Song(Base):
-    __tablename__ = "songs"
-    __table_args__ = {"schema": "music_streaming"}
-
-    id = Column(Integer, primary_key=True, index=True)
-    album_id = Column(Integer, ForeignKey("music_streaming.albums.id"), nullable=False)
-    genre_id = Column(Integer, nullable=False)
-    title = Column(String, nullable=False)
-    duration = Column(Integer)
-    audio_url = Column(Text, nullable=False)
-    track_number = Column(Integer)
-    created_at = Column(Date)
-    updated_at = Column(Date)
-
-    album = relationship("Album", back_populates="songs")
-    artists = relationship("Artist", secondary=song_artists, back_populates="songs")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

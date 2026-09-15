@@ -128,10 +128,13 @@ async def create_album(
 
 @router.get("/{album_id}", response_model=dict)
 async def get_album(album_id: int, db: AsyncSession = Depends(get_db)):
+    """Devuelve un 404 HTTP real (no un 200 con {"status": "error"}) porque
+    también la consume el consumer de search-service para distinguir
+    "álbum no existe" de un error de red."""
     service = AlbumService(AlbumRepository(db))
     album = await service.get_album(album_id)
     if not album:
-        return error_response(404, "Álbum no encontrado")
+        raise HTTPException(status_code=404, detail="Álbum no encontrado")
     schema = AlbumOut.model_validate(album)
     return success_response(schema.model_dump(), "Álbum recuperado correctamente")
 
@@ -203,6 +206,24 @@ async def update_album(
 
     schema = AlbumOut.model_validate(updated)
     return success_response(schema.model_dump(), "Álbum actualizado correctamente")
+
+
+@router.delete("/artist/{artist_id}", response_model=dict)
+async def delete_albums_by_artist(artist_id: int, db: AsyncSession = Depends(get_db)):
+    """Endpoint interno: borra todos los álbumes/canciones de un artista.
+    Lo llama artist-service al eliminar la cuenta de un artista (Fase 3:
+    ya no tiene acceso directo a estas tablas). Un 500 HTTP real es
+    importante aquí: si el cascade falla, artist-service debe abortar el
+    borrado del artista en vez de dejarlo huérfano de su contenido."""
+    service = AlbumService(AlbumRepository(db))
+    try:
+        await service.delete_albums_by_artist(artist_id)
+        return success_response({}, "Álbumes del artista eliminados correctamente")
+    except Exception as e:
+        logger.exception("Error eliminando álbumes del artista %s", artist_id)
+        raise HTTPException(
+            status_code=500, detail="Error al eliminar álbumes del artista"
+        ) from e
 
 
 @router.delete("/{album_id}", response_model=dict)

@@ -61,3 +61,44 @@ class SongOut(SongBase):
 
     class Config:
         from_attributes = True
+
+
+class SongEnrichedOut(SongBase):
+    """Vista de canción con álbum y artista ya resueltos, para servicios
+    que consumen esta API en vez de leer la tabla songs directamente
+    (playlist-service, search-service)."""
+
+    id: int
+    album_id: int
+    album_title: Optional[str] = None
+    album_cover_url: Optional[str] = None
+    artist_id: Optional[int] = None
+    artist_name: Optional[str] = None
+    genre_id: Optional[int]
+    created_at: Optional[date]
+    updated_at: Optional[date]
+
+    class Config:
+        from_attributes = True
+
+    @classmethod
+    def from_song(cls, song) -> "SongEnrichedOut":
+        album = song.album
+        artist = album.artist if album else None
+        if not artist and song.artists:
+            artist = song.artists[0]
+        return cls(
+            id=song.id,
+            title=song.title,
+            duration=song.duration,
+            audio_url=song.audio_url,
+            track_number=song.track_number,
+            album_id=song.album_id,
+            album_title=album.title if album else None,
+            album_cover_url=album.cover_url if album else None,
+            artist_id=artist.id if artist else None,
+            artist_name=artist.artist_name if artist else None,
+            genre_id=song.genre_id,
+            created_at=song.created_at,
+            updated_at=song.updated_at,
+        )

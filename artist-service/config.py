@@ -2,10 +2,10 @@ from pydantic import Field
 from typing import Optional
 import boto3
 
-from vibestream_common.config import BaseServiceSettings
+from vibestream_common.config import BaseServiceSettings, InternalServiceURLsMixin
 
 
-class Settings(BaseServiceSettings):
+class Settings(BaseServiceSettings, InternalServiceURLsMixin):
     port: int = Field(alias="ARTIST_PORT", default=8002)
     rabbitmq_url: str = Field(alias="RABBITMQ_URL")
 

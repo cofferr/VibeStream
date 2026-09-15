@@ -1,13 +1,20 @@
 # core/services/playlist_service.py
+import logging
+
 from database.models import Playlist
 from repositories.playlist_repository import PlaylistRepository
 from typing import Optional, Dict, Any, List
+from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
+from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class PlaylistService:
     def __init__(self, repo: PlaylistRepository, user_id: int):
         self.repo = repo
         self.user_id = user_id
+        self.content_client = InternalHTTPClient(settings.content_service_url)
 
     async def create_playlist(
         self, name: str, description: Optional[str] = None
@@ -55,25 +62,76 @@ class PlaylistService:
 
     async def get_playlist_songs(self, playlist_id: int) -> List[Dict[str, Any]]:
         """
-        Obtener todas las canciones de una playlist con formato específico
-
-        Args:
-            playlist_id: ID de la playlist
+        Obtener todas las canciones de una playlist, enriquecidas con
+        título/artista/portada vía el endpoint batch de content-service
+        (playlist_songs solo guarda song_id; ya no hay join local a songs).
 
         Returns:
-            Lista de canciones con formato: album_url, song_name, artist, duration, added_at
+            Lista de canciones con formato: id, title, artist_name, duration, album_title, album_cover, audio_url, added_at
         """
-        return await self.repo.get_playlist_songs(playlist_id, self.user_id)
+        rows = await self.repo.get_playlist_song_rows(playlist_id, self.user_id)
+        if not rows:
+            return []
+
+        added_at_by_song_id = {row.song_id: row.added_at for row in rows}
+        song_ids = list(added_at_by_song_id.keys())
+
+        try:
+            response = await self.content_client.get(
+                "/songs/batch", params={"ids": ",".join(str(i) for i in song_ids)}
+            )
+        except InternalServiceError:
+            logger.exception(
+                "No se pudo enriquecer playlist %s vía content-service", playlist_id
+            )
+            raise
+
+        songs_by_id = {
+            song["id"]: song
+            for song in (response or {}).get("data", {}).get("songs", [])
+        }
+
+        formatted_songs = []
+        for song_id, added_at in added_at_by_song_id.items():
+            song = songs_by_id.get(song_id)
+            if not song:
+                # La canción fue borrada en content-service después de
+                # añadirse a la playlist; se omite en vez de romper la vista.
+                continue
+            formatted_songs.append(
+                {
+                    "id": song["id"],
+                    "title": song["title"],
+                    "artist_name": song.get("artist_name"),
+                    "artist_id": song.get("artist_id"),
+                    "duration": song.get("duration"),
+                    "album_title": song.get("album_title"),
+                    "album_cover": song.get("album_cover_url"),
+                    "audio_url": song.get("audio_url"),
+                    "added_at": added_at.isoformat() if added_at else None,
+                }
+            )
+
+        return formatted_songs
 
     async def add_song_to_playlist(
         self, playlist_id: int, song_id: int
     ) -> tuple[bool, str]:
         """
-        Añadir una canción a la playlist
+        Añadir una canción a la playlist. Valida contra content-service que
+        la canción exista antes de guardar el song_id (ya no hay FK local).
 
         Returns:
             tuple[bool, str]: (success, message)
         """
+        try:
+            song = await self.content_client.get(f"/songs/{song_id}/enriched")
+        except InternalServiceError:
+            return False, "No se pudo validar la canción, intenta de nuevo."
+
+        if not song:
+            return False, "La canción no existe."
+
         success = await self.repo.add_song_to_playlist(
             playlist_id, song_id, self.user_id
         )
@@ -82,7 +140,7 @@ class PlaylistService:
             return True, "Canción añadida correctamente a la playlist"
         return (
             False,
-            "No se pudo añadir la canción. Verifica que la playlist te pertenece y que la canción existe.",
+            "No se pudo añadir la canción. Verifica que la playlist te pertenece.",
         )
 
     async def remove_song_from_playlist(

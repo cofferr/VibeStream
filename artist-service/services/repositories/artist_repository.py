@@ -1,9 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from database.models import Artist, Album, Song, SongArtist
+from database.models import Artist
 from models.artist import ArtistCreateSchema, ArtistUpdateSchema
 from typing import Any, cast
-from sqlalchemy import delete
 
 
 class ArtistRepository:
@@ -54,40 +53,8 @@ class ArtistRepository:
 
     @staticmethod
     async def delete(db: AsyncSession, artist: Artist) -> None:
-        """
-        Elimina un artista junto con:
-        - Sus álbumes
-        - Canciones de esos álbumes
-        - Relaciones song_artists de esas canciones
-        - Relaciones song_artists del artista en canciones de otros álbumes
-        """
-
-        # 1) Obtener álbumes del artista
-        albums_res = await db.execute(select(Album).where(Album.artist_id == artist.id))
-        albums = albums_res.scalars().all()
-
-        for album in albums:
-            # 2) Obtener canciones del álbum
-            songs_res = await db.execute(select(Song).where(Song.album_id == album.id))
-            songs = songs_res.scalars().all()
-
-            for song in songs:
-                # 2a) Eliminar relaciones song_artists de la canción
-                await db.execute(
-                    delete(SongArtist).where(SongArtist.song_id == song.id)
-                )
-
-                # 2b) Eliminar la canción
-                await db.delete(song)
-
-            # 2c) Eliminar el álbum
-            await db.delete(album)
-
-        # 3) Eliminar relaciones song_artists del artista en colaboraciones
-        await db.execute(delete(SongArtist).where(SongArtist.artist_id == artist.id))
-
-        # 4) Eliminar el artista
+        """Elimina el artista de este servicio. Sus álbumes/canciones ya no
+        son tablas locales (Fase 3): el cascade en content-service lo hace
+        ArtistService.delete_artist_by_user antes de llamar aquí."""
         await db.delete(artist)
-
-        # 5) Confirmar cambios
         await db.commit()

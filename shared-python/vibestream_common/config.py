@@ -50,3 +50,24 @@ class BaseServiceSettings(BaseSettings):
                     raw,
                 )
         return [p.strip() for p in s.split(",") if p.strip()]
+
+
+class InternalServiceURLsMixin(BaseSettings):
+    """Mixin opcional para servicios que necesitan llamar a otros servicios
+    internos vía HTTP (Fase 3: propiedad de datos por servicio). Usa los
+    nombres DNS de Docker Compose (misma red vibestream-network)."""
+
+    content_service_url: str = Field(
+        alias="CONTENT_SERVICE_URL", default="http://content-service:8001"
+    )
+    artist_service_url: str = Field(
+        alias="ARTIST_SERVICE_URL", default="http://artist-service:8002"
+    )
+    auth_service_url: str = Field(
+        alias="AUTH_SERVICE_URL", default="http://auth-service:8080"
+    )
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"

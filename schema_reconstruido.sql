@@ -6,26 +6,38 @@
 -- create_all()/Alembic en Python). El schema vivía solo en la base de datos
 -- perdida, nunca versionado como código.
 --
--- Fuente de verdad usada por tabla, cuando había versiones divergentes entre
--- servicios (varios servicios duplican modelos de tablas que no les
--- pertenecen):
---   - users, artists, albums, songs, genres, song_artists
---       -> content-service/infrastructure/db/models.py (la más completa:
---          tiene FKs con schema explícito, ondelete correcto, tabla Genre
---          real en vez de un genre_id suelto)
---   - artist_subscriptions -> subscription-service (única fuente)
---   - playlists, playlist_songs -> playlist-service (única fuente)
---   - play_history -> history-service (inferida de SQL crudo, ver nota abajo)
---   - jwt.refresh_tokens -> auth-service (única fuente)
+-- ACTUALIZADO en Fase 3 (refactor de propiedad de datos): antes de esta
+-- fase, varios servicios declaraban su propio modelo ORM de tablas ajenas
+-- (deuda técnica del proyecto original heredado). Fase 3 estableció un
+-- único dueño/escritor por tabla; el resto consume esos datos vía HTTP
+-- interno en vez de leer la tabla directo. Las FKs cross-schema de abajo
+-- documentan la intención original del dato, pero ya NO existen como
+-- constraint físico de BD — son "lógicas", aplicadas en el código de cada
+-- servicio (ver vibestream_common/http_client.py). Eso es intencional: es
+-- el trade-off estándar de microservicios entre integridad referencial
+-- fuerte y independencia real de despliegue por servicio.
+--
+-- Propiedad final por tabla (único escritor):
+--   - users, jwt.refresh_tokens          -> auth-service
+--   - artists                            -> artist-service
+--   - albums, songs, genres, song_artists -> content-service
+--   - artist_subscriptions               -> subscription-service
+--   - playlists, playlist_songs          -> playlist-service
+--       (playlist_songs.song_id ya NO es FK a songs: solo guarda el id,
+--        content-service es quien valida que la canción existe)
+--   - search_index                       -> search-service
+--       (índice local desnormalizado, CQRS: se llena vía eventos RabbitMQ
+--        de content-service/artist-service, no con queries directas a sus
+--        tablas — ver search-service/events/consumer.py)
+--   - play_history                       -> history-service (inferida de
+--        SQL crudo, ver nota abajo; no tocada por Fase 3)
 --
 -- NOTA IMPORTANTE sobre "users":
---   auth-service tiene la versión más completa y es el dueño lógico de
---   identidad (login/registro). Las columnas name/username/email/password/
---   role/birthdate vienen de ahí. artist-service, search-service y
---   playlist-service redefinen esta tabla con subconjuntos de columnas —
---   eso es deuda técnica del proyecto original, no algo que debas repetir,
---   pero para RESTAURAR datos existentes necesitas el superset de columnas,
---   que es este.
+--   auth-service es el único dueño/escritor de esta tabla desde Fase 3.
+--   Antes, artist-service, search-service y playlist-service también
+--   declaraban su propio modelo ORM de esta tabla (subconjuntos de
+--   columnas) — esa duplicación se eliminó; ahora leen los campos públicos
+--   de un usuario vía GET /users/{id} en auth-service.
 --
 -- NOTA sobre play_history:
 --   No existe ningún archivo de modelo (struct/clase) para esta tabla en
@@ -40,7 +52,8 @@ CREATE SCHEMA IF NOT EXISTS music_streaming;
 CREATE SCHEMA IF NOT EXISTS jwt;
 
 -- ============================================================================
--- IDENTIDAD (auth-service es el dueño real; otros servicios solo leen)
+-- IDENTIDAD (auth-service es el único dueño/escritor; otros servicios leen
+-- vía GET /users/{id}, ya no con acceso directo a la tabla)
 -- ============================================================================
 
 CREATE TABLE music_streaming.users (
@@ -66,12 +79,16 @@ CREATE TABLE jwt.refresh_tokens (
 );
 
 -- ============================================================================
--- CATÁLOGO DE CONTENIDO (content-service es el dueño real)
+-- ARTISTAS (artist-service es el único dueño/escritor desde Fase 3;
+-- content-service/search-service/subscription-service leen vía
+-- GET /artists/{id} en vez de acceso directo)
 -- ============================================================================
 
 CREATE TABLE music_streaming.artists (
     id            SERIAL PRIMARY KEY,
-    user_id       INTEGER NOT NULL UNIQUE REFERENCES music_streaming.users(id),
+    -- user_id ya no es FK física a users (users vive en auth-service);
+    -- se valida en el registro del artista vía llamada lógica, no constraint.
+    user_id       INTEGER NOT NULL UNIQUE,
     artist_name   VARCHAR NOT NULL UNIQUE,
     bio           TEXT,
     profile_pic   VARCHAR,
@@ -80,6 +97,13 @@ CREATE TABLE music_streaming.artists (
     updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX ix_artists_artist_name ON music_streaming.artists(artist_name);
+
+-- ============================================================================
+-- CATÁLOGO DE CONTENIDO (content-service es el único dueño/escritor)
+-- artists.id se referencia como FK física aquí porque content-service SÍ
+-- mantiene su propia copia de lectura de Artist (join local para
+-- enriquecer álbumes/canciones); no es el dueño de esa tabla, solo la lee.
+-- ============================================================================
 
 CREATE TABLE music_streaming.genres (
     id           SERIAL PRIMARY KEY,
@@ -124,23 +148,31 @@ CREATE UNIQUE INDEX ix_song_artists_song_id_artist_id
     ON music_streaming.song_artists(song_id, artist_id);
 
 -- ============================================================================
--- SUSCRIPCIONES (subscription-service)
+-- SUSCRIPCIONES (subscription-service es el único dueño/escritor).
+-- user_id/artist_id ya no son FK físicas: se validan vía GET /users/{id}
+-- (auth-service) y GET /artists/{id} (artist-service) antes de insertar.
 -- ============================================================================
 
 CREATE TABLE music_streaming.artist_subscriptions (
-    user_id     INTEGER NOT NULL REFERENCES music_streaming.users(id),
-    artist_id   INTEGER NOT NULL REFERENCES music_streaming.artists(id),
+    user_id     INTEGER NOT NULL,
+    artist_id   INTEGER NOT NULL,
     created_at  DATE DEFAULT CURRENT_DATE,
     PRIMARY KEY (user_id, artist_id)
 );
 
 -- ============================================================================
--- PLAYLISTS (playlist-service)
+-- PLAYLISTS (playlist-service es el único dueño/escritor).
+-- user_id ya no es FK física a users. playlist_songs.song_id tampoco es FK
+-- a songs: content-service valida su existencia (GET /songs/{id}/enriched)
+-- antes de insertar, y el enriquecimiento (título/artista/portada) se
+-- resuelve vía GET /songs/batch en vez de un join local — es el trade-off
+-- estándar de microservicios entre integridad referencial fuerte e
+-- independencia real de despliegue por servicio.
 -- ============================================================================
 
 CREATE TABLE music_streaming.playlists (
     id           SERIAL PRIMARY KEY,
-    user_id      INTEGER NOT NULL REFERENCES music_streaming.users(id),
+    user_id      INTEGER NOT NULL,
     name         VARCHAR NOT NULL,
     description  TEXT,
     created_at   DATE DEFAULT CURRENT_DATE,
@@ -149,10 +181,43 @@ CREATE TABLE music_streaming.playlists (
 
 CREATE TABLE music_streaming.playlist_songs (
     playlist_id  INTEGER NOT NULL REFERENCES music_streaming.playlists(id),
-    song_id      INTEGER NOT NULL REFERENCES music_streaming.songs(id),
+    song_id      INTEGER NOT NULL,
     added_at     DATE DEFAULT CURRENT_DATE,
     PRIMARY KEY (playlist_id, song_id)
 );
+
+-- ============================================================================
+-- ÍNDICE DE BÚSQUEDA (search-service es el único dueño/escritor)
+-- Tabla nueva de Fase 3/4: search-service ya no lee songs/albums/artists
+-- directo (esas tablas son de otros servicios). Mantiene este índice local
+-- desnormalizado vía eventos RabbitMQ (song_created/updated,
+-- album_created/updated de content-service; artist_created/updated de
+-- artist-service) — patrón CQRS, necesario porque rapidfuzz sobre HTTP
+-- síncrono por cada búsqueda sería demasiado lento.
+-- ============================================================================
+
+CREATE TABLE music_streaming.search_index (
+    id           SERIAL PRIMARY KEY,
+    entity_type  VARCHAR NOT NULL,  -- 'song' | 'album' | 'artist'
+    entity_id    INTEGER NOT NULL,
+    title        VARCHAR NOT NULL,
+    subtitle     VARCHAR,           -- nombre del artista, cuando aplica
+    cover_url    TEXT,
+    audio_url    TEXT,
+    artist_id    INTEGER,
+    album_id     INTEGER,
+    duration     INTEGER,
+    track_number INTEGER,
+    updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Nombrada explícitamente porque el consumer hace upsert vía
+    -- ON CONFLICT ON CONSTRAINT uq_search_index_entity (ver
+    -- search-service/events/consumer.py) — debe coincidir con el nombre
+    -- que genera SQLAlchemy en database/models.py.
+    CONSTRAINT uq_search_index_entity UNIQUE (entity_type, entity_id)
+);
+CREATE INDEX ix_search_index_entity_type ON music_streaming.search_index(entity_type);
+CREATE INDEX ix_search_index_entity_id ON music_streaming.search_index(entity_id);
+CREATE INDEX ix_search_index_title ON music_streaming.search_index(title);
 
 -- ============================================================================
 -- HISTORIAL DE REPRODUCCIÓN (history-service)

@@ -1,13 +1,11 @@
 # core/repositories/playlist_repository.py
 import logging
-import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy import func as sql_func
 from database.models import Playlist, PlaylistSong
-from typing import Optional, Dict, Any, List
+from typing import Optional, List
 from datetime import date
-from config import settings
 from errors import RepositoryError
 
 logger = logging.getLogger(__name__)
@@ -85,85 +83,35 @@ class PlaylistRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_playlist_songs(self, playlist_id: int, user_id: int) -> List[Dict[str, Any]]:
-        """
-        Obtener todas las canciones de una playlist con formato específico:
-        Incluye URLs completas para cover y audio
-        """
-        from database.models import Song, Album, Artist
-
-        # Primero verificar que la playlist pertenece al usuario
+    async def get_playlist_song_rows(
+        self, playlist_id: int, user_id: int
+    ) -> List[PlaylistSong]:
+        """Obtiene las filas playlist_songs (solo song_id + added_at) de una
+        playlist propia. El enriquecimiento con título/artista/portada se
+        hace en el service vía el endpoint batch de content-service, ya que
+        songs ya no es una tabla de este servicio."""
         playlist = await self.get_playlist_by_id(playlist_id, user_id)
         if not playlist:
             return []
 
-        # Base URL para los archivos (configurable vía FILES_BASE_URL)
-        BASE_URL = getattr(settings, "files_base_url", "http://localhost:8002/files")
-
-        # Consulta optimizada para obtener toda la información necesaria
         stmt = (
-            select(
-                Song.id.label("song_id"),
-                Song.title.label("song_title"),
-                Song.audio_url,
-                Song.duration,
-                Album.cover_url,
-                Album.title.label("album_title"),
-                Artist.artist_name,
-                Artist.id.label("artist_id"),
-                PlaylistSong.added_at,
-            )
-            .select_from(PlaylistSong)
-            .join(Song, PlaylistSong.song_id == Song.id)
-            .join(Album, Song.album_id == Album.id)
-            .join(Artist, Album.artist_id == Artist.id)
+            select(PlaylistSong)
             .where(PlaylistSong.playlist_id == playlist_id)
             .order_by(PlaylistSong.added_at.asc())
         )
-
         result = await self.session.execute(stmt)
-        songs_data = result.fetchall()
-
-        # Formatear la respuesta con URLs completas
-        formatted_songs = []
-        for song_data in songs_data:
-            # Construir URLs completas
-            cover_url = f"{BASE_URL}{song_data.cover_url}" if song_data.cover_url else None
-            audio_url = f"{BASE_URL}{song_data.audio_url}" if song_data.audio_url else None
-
-            formatted_songs.append(
-                {
-                    "id": song_data.song_id,
-                    "title": song_data.song_title,
-                    "artist_name": song_data.artist_name,
-                    "duration": song_data.duration,
-                    "album_title": song_data.album_title,
-                    "album_cover": cover_url,
-                    "audio_url": audio_url,
-                    "artist_id": song_data.artist_id,
-                    "added_at": song_data.added_at.isoformat() if song_data.added_at else None,
-                }
-            )
-
-        return formatted_songs
+        return list(result.scalars().all())
 
     async def add_song_to_playlist(
         self, playlist_id: int, song_id: int, user_id: int
     ) -> bool:
-        """Añadir una canción a la playlist verificando permisos"""
+        """Añadir una canción a la playlist verificando permisos. La
+        existencia de la canción en content-service la valida el service
+        antes de llamar aquí (ya no hay FK local a songs)."""
         try:
             # Verificar que la playlist pertenece al usuario
             playlist = await self.get_playlist_by_id(playlist_id, user_id)
             if not playlist:
-                return False
-
-            # Verificar que la canción existe
-            from database.models import Song
-
-            stmt = select(Song).where(Song.id == song_id)
-            result = await self.session.execute(stmt)
-            song = result.scalar_one_or_none()
-            if not song:
                 return False
 
             # Verificar si la canción ya está en la playlist

@@ -79,19 +79,12 @@ async def get_my_subscriptions(
     """Obtiene todas las suscripciones del usuario con información completa"""
     user_id = request.state.user["user_id"]
 
-    subscriptions = await service.get_user_subscriptions(user_id)
+    subscriptions = await service.get_user_subscriptions_enriched(user_id)
 
     return {
         "user_id": user_id,
         "total_subscriptions": len(subscriptions),
-        "subscriptions": [
-            {
-                "artist_id": sub.artist_id,
-                "artist_name": sub.artist.artist_name if sub.artist else None,
-                "created_at": sub.created_at,
-            }
-            for sub in subscriptions
-        ],
+        "subscriptions": subscriptions,
     }
 
 

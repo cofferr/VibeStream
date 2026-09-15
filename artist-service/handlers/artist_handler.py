@@ -144,3 +144,15 @@ async def delete_my_artist(request: Request, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=404, detail="Artista no encontrado")
 
     return success_response({}, "Artista eliminado correctamente")
+
+
+@router.get("/{artist_id}", response_model=dict)
+async def get_artist_by_id(artist_id: int, db: AsyncSession = Depends(get_db)):
+    """Endpoint público de lectura: content-service, search-service y
+    subscription-service lo usan para resolver/validar datos de artista
+    sin acceso directo a la tabla artists."""
+    artist = await ArtistService.get_artist_by_id(db, artist_id)
+    if not artist:
+        raise HTTPException(status_code=404, detail="Artista no encontrado")
+
+    return success_response(artist.model_dump(), "Artista recuperado correctamente")

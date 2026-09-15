@@ -59,10 +59,11 @@ class FuzzySearchStrategy(SearchStrategy):
         albums = await album_repo.get_by_title_ilike(query, limit * 3, offset_albums)
         artists = await artist_repo.search_by_name(query, limit * 3, offset_artists)
 
-        # Filtrar usando fuzzy matching sobre los objetos
+        # Filtrar usando fuzzy matching sobre los objetos (los 3 tipos de
+        # entidad del índice usan "title" como campo de nombre principal)
         filtered_songs = await self._filter_objects(songs, query, "title")
         filtered_albums = await self._filter_objects(albums, query, "title")
-        filtered_artists = await self._filter_objects(artists, query, "artist_name")
+        filtered_artists = await self._filter_objects(artists, query, "title")
 
         return (
             filtered_songs[:limit],

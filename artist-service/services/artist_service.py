@@ -1,15 +1,22 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from services.repositories.artist_repository import ArtistRepository
-from events.events import publish_artist_created_event
+from events.events import publish_artist_created_event, publish_artist_updated_event
 from models.artist import (
     ArtistCreateSchema,
     ArtistUpdateSchema,
     ArtistResponseSchema,
 )
 import asyncio
+import logging
 from fastapi import UploadFile
 from typing import Optional
 from utils.file_uploader import FileUploader
+from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+content_client = InternalHTTPClient(settings.content_service_url)
 
 
 class ArtistService:
@@ -61,6 +68,20 @@ class ArtistService:
         )
 
     @staticmethod
+    async def get_artist_by_id(
+        db: AsyncSession, artist_id: int
+    ) -> ArtistResponseSchema | None:
+        """Lectura pública por id, consumida por content-service,
+        search-service y subscription-service (Fase 3: propiedad de datos
+        por servicio)."""
+        artist = await ArtistRepository.get_by_id(db, artist_id)
+        return (
+            ArtistResponseSchema.model_validate(artist, from_attributes=True)
+            if artist
+            else None
+        )
+
+    @staticmethod
     async def update_artist_by_user(
         db: AsyncSession,
         user_id: int,
@@ -80,12 +101,31 @@ class ArtistService:
             data.profile_pic = uploaded_url
 
         updated = await ArtistRepository.update(db, artist, data)
-        return ArtistResponseSchema.model_validate(updated, from_attributes=True)
+        artist_schema = ArtistResponseSchema.model_validate(
+            updated, from_attributes=True
+        )
+
+        asyncio.create_task(publish_artist_updated_event(artist_schema.model_dump()))
+
+        return artist_schema
 
     @staticmethod
     async def delete_artist_by_user(db: AsyncSession, user_id: int) -> bool:
         artist = await ArtistRepository.get_by_user_id(db, user_id)
         if not artist:
             return False
+
+        # Los álbumes/canciones del artista ya no son tablas de este
+        # servicio (Fase 3): se borran en content-service antes de borrar
+        # el artista local, para no dejar huérfanos.
+        try:
+            await content_client.delete(f"/albums/artist/{artist.id}")
+        except InternalServiceError:
+            logger.exception(
+                "No se pudo eliminar el contenido del artista %s en content-service",
+                artist.id,
+            )
+            raise
+
         await ArtistRepository.delete(db, artist)
         return True

@@ -1,9 +1,9 @@
 from pydantic import Field
 
-from vibestream_common.config import BaseServiceSettings
+from vibestream_common.config import BaseServiceSettings, InternalServiceURLsMixin
 
 
-class Settings(BaseServiceSettings):
+class Settings(BaseServiceSettings, InternalServiceURLsMixin):
     port: int = Field(alias="SUBSCRIPTION_PORT", default=8007)
 
 

@@ -1,10 +1,8 @@
 from typing import Protocol, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from sqlalchemy.orm import selectinload  # 👈 Importante
 from datetime import date
 from database.models import ArtistSubscription
-from typing import Any, Dict
 
 
 # 🔹 Contrato (interfaz) del repositorio
@@ -52,10 +50,11 @@ class SQLAlchemySubscriptionRepository:
 
     # 🔹 NUEVOS MÉTODOS
     async def get_user_subscriptions(self, user_id: int) -> List[ArtistSubscription]:
-        """Obtiene todas las suscripciones completas de un usuario, con artista incluido"""
+        """Obtiene todas las suscripciones de un usuario (solo user_id/artist_id;
+        el nombre del artista se resuelve vía HTTP en el service, no con un
+        join local — artists ya no es una tabla de este servicio)."""
         result = await self.session.execute(
             select(ArtistSubscription)
-            .options(selectinload(ArtistSubscription.artist))  # 👈 carga artist
             .where(ArtistSubscription.user_id == user_id)
             .order_by(ArtistSubscription.created_at.desc())
         )

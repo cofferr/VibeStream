@@ -68,6 +68,10 @@ func main() {
 	r.POST("/register", handlers.Register(userService))
 	r.POST("/login", handlers.Login(authService))
 	r.POST("/refresh", handlers.Refresh(authService))
+	// Lectura pública de campos básicos de usuario, consumida por otros
+	// servicios internos (playlist-service, subscription-service) que no
+	// tienen un JWT de usuario para reenviar.
+	r.GET("/users/:id", handlers.GetPublicUser(userService))
 
 	// Rutas protegidas
 	auth := r.Group("/", middleware.AuthMiddleware(cfg.JWTSecret))
