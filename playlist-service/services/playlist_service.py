@@ -1,11 +1,12 @@
 # core/services/playlist_service.py
 import logging
+from typing import Any, Dict, List, Optional
 
+from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
+
+from config import settings
 from database.models import Playlist
 from repositories.playlist_repository import PlaylistRepository
-from typing import Optional, Dict, Any, List
-from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
-from config import settings
 
 logger = logging.getLogger(__name__)
 

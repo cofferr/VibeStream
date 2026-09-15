@@ -1,21 +1,23 @@
+import os
 from datetime import date
-from infrastructure.db.models import Album, Song
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import settings
 from core.repositories.album_repository import AlbumRepository
+from core.services.artist_lookup import ArtistLookupService
 from events.producer import (
     publish_album_created_event,
-    publish_album_updated_event,
     publish_album_deleted_event,
+    publish_album_updated_event,
     publish_song_deleted_event,
 )
-from core.services.artist_lookup import ArtistLookupService
-import os
-from sqlalchemy.ext.asyncio import AsyncSession
-from config import settings
+from infrastructure.db.models import Album, Song
 from infrastructure.storage.s3_client import (
-    upload_bytes_to_s3,
     build_s3_public_url,
     delete_from_s3,
     extract_s3_key_from_url,
+    upload_bytes_to_s3,
 )
 
 

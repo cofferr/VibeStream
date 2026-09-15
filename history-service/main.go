@@ -13,7 +13,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -37,27 +39,27 @@ func main() {
 	r := gin.Default()
 
 	// Configurar trusted proxies (confiar en Nginx y Docker)
-	r.SetTrustedProxies([]string{"172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"})
+	if err := r.SetTrustedProxies([]string{"172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"}); err != nil {
+		log.Fatalf("❌ Error configurando trusted proxies: %v", err)
+	}
 
-	// CORS
+	// CORS (Fase 5: el CORS manual anterior reflejaba cualquier header
+	// Origin del request sin validarlo contra allowedOrigins — la
+	// variable se calculaba pero nunca se usaba, así que el allowlist no
+	// se aplicaba de verdad. gin-contrib/cors es el mismo paquete que ya
+	// usan auth-service y streaming-service, cerrando la única
+	// divergencia de CORS en Go que quedaba pendiente de Fase 2.)
 	allowedOrigins := cfg.AllowedOrigins
 	if len(allowedOrigins) == 0 {
 		allowedOrigins = []string{"*"}
 	}
-	r.Use(func(c *gin.Context) {
-		origin := c.Request.Header.Get("Origin")
-		if origin != "" {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-			c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			c.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
-		}
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     allowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// Middleware de autenticación
 	r.Use(middleware.AuthMiddleware(cfg.JWTSecret))

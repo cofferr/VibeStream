@@ -1,8 +1,9 @@
 from typing import List
-from repositories.repository import SubscriptionRepository
-from database.models import ArtistSubscription
+
 from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
+
 from config import settings
+from repositories.repository import SubscriptionRepository
 
 
 class SubscriptionService:

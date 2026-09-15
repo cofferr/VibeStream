@@ -231,6 +231,37 @@ Implementada originalmente en una máquina sin Docker disponible (validada solo 
 - Correr el workflow de GitHub Actions y confirmar verde en toda la matriz.
 - Romper un test a propósito y confirmar que CI falla (prueba que el pipeline es real).
 
+### ✅ Estado: implementada y verificada localmente (2026-09-15)
+
+**Cambios respecto al texto original del plan:**
+
+1. **`gosimple` no existe como linter separado en golangci-lint v2** (la versión actual) — sus reglas (S1xxx) se fusionaron dentro de `staticcheck`. `.golangci.yml` quedó con `govet`, `staticcheck`, `errcheck` — mismo alcance que pedía el plan, solo que consolidado. Confirmado corriendo `golangci-lint help linters` contra la imagen `golangci/golangci-lint:v2.1.6`.
+
+2. **`ruff check` encontró errores reales en los 5 servicios Python** (no solo estilo): imports sin usar (`F401`) y orden de imports (`I001`) en código preexistente de toda la app, no solo en los archivos nuevos de esta fase. Se corrió `ruff check --fix .` una vez por servicio — es el mismo costo de adoptar un linter que correr `gofmt -w .` la primera vez sobre un repo Go: un fix mecánico, sin cambio de comportamiento, pero con un diff grande (~40 archivos, solo reordenamiento de imports). `E501` (línea larga) se dejó fuera de `select` en los 5 `pyproject.toml`: reformatear retroactivamente todas las líneas largas preexistentes no tenía valor funcional para el alcance de esta fase.
+
+3. **El autofix de `ruff` rompió `content-service` de verdad**: `core/entities/album.py` importaba `SongOut` desde `core/entities/song` solo para re-exportarlo (un patrón frágil ya en el código original), y ruff lo marcó como "no usado" y lo borró — rompiendo el arranque del servicio (`ImportError` en `album_handler.py`, que importaba `SongOut` desde `core.entities.album` en vez de su módulo real). Encontrado recién al reconstruir y levantar el stack Docker completo después del autofix (exactamente por esto se verifica con Docker real, no solo con `pytest`). Corregido en la raíz: `album_handler.py` ahora importa `SongOut` desde `core.entities.song` directamente.
+
+4. **Se corrigieron los hallazgos reales de `golangci-lint`** en vez de dejarlos para que el primer run de CI empezara en rojo: errores de retorno no chequeados (`errcheck`) en los 3 servicios Go, una rama `else` vacía, y un `SA4006` (valor nunca usado) en `history-service/main.go` que resultó ser **un bug de seguridad real**: la variable `allowedOrigins` se calculaba pero nunca se usaba — el CORS manual de ese archivo reflejaba *cualquier* header `Origin` del request con `Access-Control-Allow-Credentials: true`, ignorando el allowlist configurado. Este era justo el ítem que Fase 2 dejó pendiente ("reemplazar el CORS hecho a mano por `gin-contrib/cors`") y nunca se aplicó. Corregido migrando a `gin-contrib/cors`, igual que auth-service/streaming-service.
+
+5. **`streaming-service/services/streaming_service.go` se eliminó** en vez de corregir sus lint issues: `grep` confirmó que `StreamingService`/`NewStreamingService` no se usaban en ningún otro archivo — la lógica de streaming real vive duplicada directamente en `handlers/stream.go`. Código muerto, no vale la pena mantenerlo lint-clean.
+
+6. **Se agregaron 2 tests por servicio Python** en vez de solo los 2 ejemplos citados en el texto original (playlist-service, search-service) — el texto decía "un `tests/` por servicio", así que se completaron los 3 restantes:
+   - `content-service`: regresión del bug de datetime de Fase 3 (`AlbumOut`/`SongOut`/`SongEnrichedOut` aceptan un `datetime` real) + `validate_album_ownership` (403 a no-dueños).
+   - `artist-service`: la lista de excepciones públicas del `AuthMiddleware` (qué rutas quedan sin JWT) vía `TestClient`, incluyendo una regresión explícita del bug de Fase 3 (401 real, no 500).
+   - `subscription-service`: reglas de negocio de `SubscriptionService` (no auto-suscribirse, no duplicar, artista inexistente).
+
+7. **`shared-python/pyproject.toml` no declaraba `aio-pika`** como dependencia pese a que el nuevo `vibestream_common/rabbitmq.py` de Fase 4 lo importa — gap real encontrado al escribir los tests (no se manifestaba antes porque los 3 servicios que usan ese módulo ya tienen `aio-pika` en su propio `requirements.txt`, pero el paquete compartido en sí quedaba con una dependencia no declarada). Agregado a `dependencies`.
+
+8. **Cada `conftest.py`/env var de test se documentó explícitamente**: los `Settings` de pydantic-settings se validan al importar `config.py`, así que cada servicio necesita variables dummy (`db_url_py`, `JWT_SECRET`, etc.) seteadas *antes* de que pytest importe cualquier módulo de la app — no estaba en el texto original del plan, es un detalle de implementación real de FastAPI/pydantic-settings.
+
+**Verificación real ejecutada:**
+- `go build && go vet && go test ./...` + `golangci-lint run` (contra `golangci/golangci-lint:v2.1.6`) — **0 issues** en los 3 servicios Go y en `shared-go`.
+- `ruff check .` — **0 issues** en los 5 servicios Python, tras el fix.
+- `python -m pytest tests/ -v` — **33 tests, todos pasan** (6 artist + 6 content + 9 playlist + 6 search + 6 subscription).
+- **Se rompió un test a propósito** (Go y Python, uno de cada lado) y se confirmó que falla con el mensaje correcto, luego se revirtió — prueba de que el pipeline detecta regresiones reales, no que "siempre pasa".
+- `docker compose build` (los 9 servicios) + `docker compose up` completo tras todos los cambios de esta fase (incluyendo el fix del bug de `ruff --fix` en content-service) — stack estable, 0 reinicios, smoke test manual de auth/history/streaming/content-service en verde.
+- Nota: no se pudo correr el workflow de GitHub Actions real (`.github/workflows/ci.yml`) porque este entorno no tiene push a un remoto de GitHub — se simuló cada paso del workflow localmente contra los mismos comandos exactos (incluyendo el detalle real de `python -m pytest` vs `pytest` suelto, que si no se usa así rompe la resolución de imports locales en CI). **Pendiente real: confirmar en GitHub Actions una vez se haga push.**
+
 ---
 
 ## Fase 6 — Limpieza de Docker/Compose

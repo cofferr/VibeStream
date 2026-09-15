@@ -48,7 +48,9 @@ func main() {
 	r := gin.Default()
 
 	// Configurar trusted proxies (confiar en Nginx y Docker)
-	r.SetTrustedProxies([]string{"172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"})
+	if err := r.SetTrustedProxies([]string{"172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"}); err != nil {
+		log.Fatalf("❌ Error configurando trusted proxies: %v", err)
+	}
 
 	// Configuración de CORS dinámica desde .env
 	allowedOrigins := cfg.AllowedOrigins

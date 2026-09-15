@@ -72,7 +72,9 @@ func StartConsumer(ctx context.Context, svc *services.HistoryService) error {
 			var evt models.SongPlayedEvent
 			if err := json.Unmarshal(d.Body, &evt); err != nil {
 				log.Printf("❌ Error decodificando evento: %v", err)
-				d.Nack(false, false)
+				if nackErr := d.Nack(false, false); nackErr != nil {
+					log.Printf("❌ Error rechazando mensaje: %v", nackErr)
+				}
 				continue
 			}
 
@@ -83,11 +85,15 @@ func StartConsumer(ctx context.Context, svc *services.HistoryService) error {
 				// siempre. Ahora se rechaza sin reintentar: la cola tiene
 				// dead-letter-exchange configurado, así que termina en dlq
 				// en vez de perderse o hacer loop.
-				d.Nack(false, false)
+				if nackErr := d.Nack(false, false); nackErr != nil {
+					log.Printf("❌ Error rechazando mensaje: %v", nackErr)
+				}
 				continue
 			}
 
-			d.Ack(false)
+			if err := d.Ack(false); err != nil {
+				log.Printf("❌ Error confirmando mensaje: %v", err)
+			}
 			log.Printf("✅ Evento procesado: user=%d, song=%d", evt.UserID, evt.SongID)
 		}
 	}()

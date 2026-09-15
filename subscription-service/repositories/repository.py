@@ -1,7 +1,9 @@
-from typing import Protocol, List
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
 from datetime import date
+from typing import List, Protocol
+
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from database.models import ArtistSubscription
 
 

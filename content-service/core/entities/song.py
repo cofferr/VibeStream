@@ -1,8 +1,7 @@
-from pydantic import BaseModel, field_validator
-from datetime import date, datetime
-from typing import Optional, List
+from datetime import datetime
+from typing import List, Optional
 
-from .artist import ArtistOut  # forward refs
+from pydantic import BaseModel, field_validator
 
 
 class SongBase(BaseModel):

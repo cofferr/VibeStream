@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional
 from datetime import date
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # DTOs para requests

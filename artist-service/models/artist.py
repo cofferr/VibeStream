@@ -1,6 +1,7 @@
-from pydantic import BaseModel, HttpUrl
-from typing import Optional, Dict
 from datetime import datetime
+from typing import Dict, Optional
+
+from pydantic import BaseModel
 
 # -------------------------------
 # DTOs de Entrada (Request)

@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status
+
 from core.services.artist_lookup import ArtistLookupService
 
 

@@ -1,4 +1,4 @@
-from fastapi import UploadFile, HTTPException
+from fastapi import HTTPException, UploadFile
 
 # Formatos de audio soportados
 SUPPORTED_AUDIO_FORMATS = {

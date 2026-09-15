@@ -1,21 +1,22 @@
 import datetime
+
 from sqlalchemy import (
-    Integer,
-    String,
-    Text,
+    JSON,
+    Column,
     Date,
     DateTime,
     ForeignKey,
-    Table,
     Index,
-    JSON,
-    Column,
+    Integer,
+    String,
+    Table,
+    Text,
 )
 from sqlalchemy.orm import (
-    relationship,
     DeclarativeBase,
     Mapped,
     mapped_column,
+    relationship,
 )
 
 

@@ -1,6 +1,5 @@
 # config.py
 from pydantic import Field
-
 from vibestream_common.config import BaseServiceSettings, InternalServiceURLsMixin
 
 

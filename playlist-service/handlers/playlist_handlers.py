@@ -1,14 +1,16 @@
 # handlers/playlist_handlers.py
-from fastapi import APIRouter, Depends, Request, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
-from pydantic import BaseModel
 import logging
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database.connection import get_db
 from database.models import Playlist
+from errors import handle_errors
 from repositories.playlist_repository import PlaylistRepository
 from services.playlist_service import PlaylistService
-from database.connection import get_db
-from errors import handle_errors
 
 logger = logging.getLogger(__name__)
 

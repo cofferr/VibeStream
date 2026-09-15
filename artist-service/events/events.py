@@ -1,6 +1,8 @@
 import json
+from datetime import date, datetime
+
 import aio_pika  # librería async para RabbitMQ
-from datetime import datetime, date
+
 from config import settings
 
 

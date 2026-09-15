@@ -1,20 +1,21 @@
+import json
+from typing import Optional
+
 from fastapi import (
     APIRouter,
-    HTTPException,
     Depends,
-    Request,
-    UploadFile,
     File,
     Form,
+    HTTPException,
+    Request,
+    UploadFile,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.connection import get_db
 from models.artist import ArtistCreateSchema, ArtistUpdateSchema
 from services.artist_service import ArtistService
-from utils.json_response import success_response, error_response
-from database.connection import get_db
-from typing import Optional
-import json
+from utils.json_response import error_response, success_response
 
 router = APIRouter()
 

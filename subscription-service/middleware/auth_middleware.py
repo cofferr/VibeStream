@@ -1,5 +1,6 @@
-from config import settings
 from vibestream_common.auth_middleware import AuthMiddleware as _BaseAuthMiddleware
+
+from config import settings
 
 
 class AuthMiddleware(_BaseAuthMiddleware):

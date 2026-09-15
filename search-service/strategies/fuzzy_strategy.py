@@ -1,12 +1,14 @@
 # strategies/fuzzy_strategy.py
 import logging
-from rapidfuzz import fuzz
 from typing import List, Tuple
-from strategies.base_strategy import SearchStrategy
-from repositories.song_repository import SongRepository
+
+from rapidfuzz import fuzz
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from repositories.album_repository import AlbumRepository
 from repositories.artist_repository import ArtistRepository
-from sqlalchemy.ext.asyncio import AsyncSession
+from repositories.song_repository import SongRepository
+from strategies.base_strategy import SearchStrategy
 
 logger = logging.getLogger(__name__)
 

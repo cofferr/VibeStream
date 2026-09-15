@@ -1,8 +1,7 @@
-from pydantic import BaseModel
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional
 
-from .song import SongOut  # import circular controlado con forward refs
+from pydantic import BaseModel
 
 
 class AlbumBase(BaseModel):

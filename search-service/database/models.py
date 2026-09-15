@@ -7,7 +7,7 @@ artist-service (artist_created/updated). Es el patrón CQRS correcto para
 búsqueda difusa con rapidfuzz — evitar N llamadas HTTP síncronas por cada
 búsqueda, que serían demasiado lentas."""
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, UniqueConstraint, func
+from sqlalchemy import Column, DateTime, Integer, String, Text, UniqueConstraint, func
 
 from database.connection import Base
 

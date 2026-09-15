@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    name: go / ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth-service, history-service, streaming-service]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+
+      # go.work referencia ./shared-go y los 3 servicios Go desde la raíz,
+      # así que build/vet/test corren dentro del directorio del servicio
+      # pero resuelven vibestream/shared vía el workspace.
+      - name: go build
+        run: go build ./...
+        working-directory: ${{ matrix.service }}
+
+      - name: go vet
+        run: go vet ./...
+        working-directory: ${{ matrix.service }}
+
+      - name: go test
+        run: go test ./... -v
+        working-directory: ${{ matrix.service }}
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.1.6
+          working-directory: ${{ matrix.service }}
+          # .golangci.yml vive en la raíz del repo; golangci-lint lo
+          # encuentra solo caminando hacia arriba desde working-directory.
+
+  python:
+    name: python / ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - artist-service
+          - content-service
+          - playlist-service
+          - search-service
+          - subscription-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        working-directory: ${{ matrix.service }}
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          # vibestream_common no está en requirements.txt (se instala vía
+          # COPY+pip install en el Dockerfile); en CI se instala en modo
+          # editable desde el paquete compartido del repo.
+          pip install -e ../shared-python
+
+      - name: ruff check
+        working-directory: ${{ matrix.service }}
+        run: ruff check .
+
+      - name: pytest
+        working-directory: ${{ matrix.service }}
+        # "python -m pytest" (no el script "pytest" suelto): agrega el
+        # directorio del servicio a sys.path, que es lo que permite que
+        # los tests importen paquetes locales como "database"/"config"
+        # sin necesitar instalar el servicio como paquete.
+        run: python -m pytest tests/ -v

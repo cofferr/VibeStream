@@ -1,12 +1,14 @@
 # main.py - VERSIÓN CORREGIDA
+import logging
+
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from vibestream_common.errors import make_global_exception_handler
+
+from config import settings
 from handlers.playlist_handlers import router as playlist_router
 from middleware.auth_middleware import AuthMiddleware
-from vibestream_common.errors import make_global_exception_handler
-import uvicorn
-from config import settings
-import logging
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)

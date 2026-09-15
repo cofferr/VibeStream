@@ -1,15 +1,15 @@
 import asyncio
 import json
+
 import aio_pika
-from pathlib import Path
 from aio_pika.abc import AbstractIncomingMessage
-from infrastructure.db.connection import AsyncSessionLocal
+from vibestream_common.rabbitmq import declare_dlq, declare_fanout_queue
+
+from config import settings
 from core.repositories.album_repository import AlbumRepository
 from core.services.album_service import AlbumService
 from core.services.artist_lookup import ArtistLookupService
-from config import settings
-from vibestream_common.rabbitmq import declare_dlq, declare_fanout_queue
-
+from infrastructure.db.connection import AsyncSessionLocal
 
 # Ya no se necesita crear estructura de carpetas local
 # Todo se almacena en S3 con el formato: {artist_id}/{album_id}/{filename}

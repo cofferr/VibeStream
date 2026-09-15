@@ -1,23 +1,25 @@
+import re
 import tempfile
 from pathlib import Path
+
 from mutagen._file import File as MutagenFile
-from infrastructure.db.models import Song, Artist
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import settings
 from core.repositories.song_repository import SongRepository
+from core.services.artist_lookup import ArtistLookupService
 from events.producer import (
     publish_song_created_event,
-    publish_song_updated_event,
     publish_song_deleted_event,
+    publish_song_updated_event,
 )
-from core.services.artist_lookup import ArtistLookupService
-import re
-from sqlalchemy.ext.asyncio import AsyncSession
-from config import settings
+from infrastructure.db.models import Artist, Song
 from infrastructure.storage.s3_client import (
-    upload_bytes_to_s3,
     build_s3_public_url,
     delete_from_s3,
     extract_s3_key_from_url,
     get_s3_client,
+    upload_bytes_to_s3,
 )
 
 

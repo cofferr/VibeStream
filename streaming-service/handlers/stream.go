@@ -101,7 +101,11 @@ func StreamSongHandler(songService services.SongService) gin.HandlerFunc {
 				log.Printf("❌ error al obtener archivo de S3: %v", err)
 				return
 			}
-			defer getOutput.Body.Close()
+			defer func() {
+				if closeErr := getOutput.Body.Close(); closeErr != nil {
+					log.Printf("❌ Error cerrando stream de S3: %v", closeErr)
+				}
+			}()
 
 			_, err = io.Copy(c.Writer, getOutput.Body)
 			if err != nil {
@@ -132,7 +136,11 @@ func StreamSongHandler(songService services.SongService) gin.HandlerFunc {
 			log.Printf("❌ error al obtener rango de S3: %v", err)
 			return
 		}
-		defer getOutput.Body.Close()
+		defer func() {
+			if closeErr := getOutput.Body.Close(); closeErr != nil {
+				log.Printf("❌ Error cerrando stream de S3: %v", closeErr)
+			}
+		}()
 
 		buf := make([]byte, 32*1024)
 		var sent int64 = 0
@@ -263,5 +271,9 @@ func publishSongPlayedEvent(c *gin.Context, songID uint) {
 	}
 
 	fmt.Printf("✅ Publicando evento: userID=%d, songID=%d\n", userID, songID)
-	go events.PublishSongPlayed(userID, songID)
+	go func() {
+		if err := events.PublishSongPlayed(userID, songID); err != nil {
+			log.Printf("❌ Error publicando evento song_played: %v", err)
+		}
+	}()
 }

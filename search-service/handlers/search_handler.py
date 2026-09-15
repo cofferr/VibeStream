@@ -1,9 +1,11 @@
 import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from database.connection import get_db  # Tu función que devuelve AsyncSession
 from services.search_service import SearchService
 from strategies.fuzzy_strategy import FuzzySearchStrategy
-from database.connection import get_db  # Tu función que devuelve AsyncSession
 
 logger = logging.getLogger(__name__)
 

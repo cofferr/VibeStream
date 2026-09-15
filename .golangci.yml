@@ -1,0 +1,10 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - govet
+    # staticcheck (golangci-lint v2) ya incluye las reglas que antes eran
+    # el linter separado "gosimple" (S1xxx) — sigue siendo el mismo
+    # alcance que pedía el plan original, solo que consolidado.
+    - staticcheck
+    - errcheck

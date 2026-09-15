@@ -1,10 +1,11 @@
 import re
 
-from config import settings
 from fastapi import Request
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 from vibestream_common.auth_middleware import AuthMiddleware as _BaseAuthMiddleware
+
+from config import settings
 
 # GET /artists/{id} es de solo lectura y la consumen content-service,
 # search-service y subscription-service (Fase 3: propiedad de datos por

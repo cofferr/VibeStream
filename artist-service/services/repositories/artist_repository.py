@@ -1,8 +1,10 @@
+from typing import Any, cast
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+
 from database.models import Artist
 from models.artist import ArtistCreateSchema, ArtistUpdateSchema
-from typing import Any, cast
 
 
 class ArtistRepository:

@@ -62,14 +62,14 @@ func (p *EventPublisher) connect() error {
 	// Abrir canal
 	ch, err := conn.Channel()
 	if err != nil {
-		conn.Close()
+		_ = conn.Close() // ya estamos devolviendo el error real, uno de cierre es secundario
 		return fmt.Errorf("error al abrir canal: %w", err)
 	}
 
 	// Configurar infraestructura (exchange, cola)
 	if err := p.setupInfrastructure(ch); err != nil {
-		ch.Close()
-		conn.Close()
+		_ = ch.Close()
+		_ = conn.Close()
 		return fmt.Errorf("error al configurar infraestructura: %w", err)
 	}
 

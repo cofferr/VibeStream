@@ -44,7 +44,11 @@ func (r *historyRepo) GetUserHistory(userID uint) ([]models.PlayHistoryEntry, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.Println("❌ Error cerrando rows de play_history:", closeErr)
+		}
+	}()
 
 	var entries []models.PlayHistoryEntry
 	for rows.Next() {

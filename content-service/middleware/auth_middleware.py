@@ -1,10 +1,11 @@
 import re
 
-from config import settings
 from fastapi import Request
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 from vibestream_common.auth_middleware import AuthMiddleware as _BaseAuthMiddleware
+
+from config import settings
 
 # Endpoints de solo lectura consumidos por otros servicios internos (Fase 3:
 # propiedad de datos por servicio y Fase 4 adelantada: consumer de

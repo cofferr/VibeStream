@@ -1,10 +1,11 @@
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from vibestream_common.errors import make_global_exception_handler
+
+from config import settings
 from handlers.subscription_handler import router as subscription_router
 from middleware.auth_middleware import AuthMiddleware
-from vibestream_common.errors import make_global_exception_handler
-from config import settings
-import uvicorn
 
 app = FastAPI(title="Subscription Service", version="0.1")
 

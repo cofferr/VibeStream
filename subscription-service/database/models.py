@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Date
+from sqlalchemy import Column, Date, Integer
 from vibestream_common.db import Base
 
 

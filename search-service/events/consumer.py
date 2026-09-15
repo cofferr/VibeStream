@@ -22,14 +22,15 @@ import logging
 
 import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
-from sqlalchemy import delete as sa_delete, func
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
+from vibestream_common.rabbitmq import declare_dlq, declare_fanout_queue
 
 from config import settings
 from database.connection import AsyncSessionLocal
 from database.models import SearchIndexEntry
-from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
-from vibestream_common.rabbitmq import declare_dlq, declare_fanout_queue
 
 logger = logging.getLogger(__name__)
 

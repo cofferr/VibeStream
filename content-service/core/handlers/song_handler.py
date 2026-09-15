@@ -1,18 +1,20 @@
 # song_handler.py
-from fastapi import APIRouter, Depends, Request, File, UploadFile, Form, HTTPException, Query
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
-from infrastructure.db.connection import get_db
-from core.repositories.song_repository import SongRepository
+
+from core.entities.song import SongCreateFormData, SongEnrichedOut, SongOut
 from core.repositories.album_repository import AlbumRepository
+from core.repositories.song_repository import SongRepository
 from core.services.song_service import SongService
-from core.entities.song import SongOut, SongCreateFormData, SongEnrichedOut
-from utils.json_response import success_response, error_response
-from typing import Optional
+from infrastructure.db.connection import get_db
 from utils.audio_validation import validate_audio_file
+from utils.json_response import error_response, success_response
 from utils.ownership import (
-    validate_song_ownership,
     validate_album_ownership,
+    validate_song_ownership,
 )  # 🔹 Importar validación de ownership
 
 router = APIRouter(prefix="/songs", tags=["songs"])

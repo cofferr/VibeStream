@@ -4,7 +4,8 @@ se declaran aquí como modelos duplicados. user_id deja de ser FK local:
 la validación de que el usuario existe la hace auth-service en el
 registro/login, no una constraint de BD cross-servicio."""
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, text
+from sqlalchemy import JSON, Column, DateTime, Integer, String, Text, text
+
 from database.connection import Base
 
 

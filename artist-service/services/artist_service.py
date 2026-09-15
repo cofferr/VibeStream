@@ -1,22 +1,24 @@
+import asyncio
+import logging
+from typing import Optional
+
+from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from services.repositories.artist_repository import ArtistRepository
+from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
+
+from config import settings
 from events.events import (
     publish_artist_created_event,
-    publish_artist_updated_event,
     publish_artist_deleted_event,
+    publish_artist_updated_event,
 )
 from models.artist import (
     ArtistCreateSchema,
-    ArtistUpdateSchema,
     ArtistResponseSchema,
+    ArtistUpdateSchema,
 )
-import asyncio
-import logging
-from fastapi import UploadFile
-from typing import Optional
+from services.repositories.artist_repository import ArtistRepository
 from utils.file_uploader import FileUploader
-from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
-from config import settings
 
 logger = logging.getLogger(__name__)
 

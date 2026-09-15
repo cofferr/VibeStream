@@ -1,7 +1,7 @@
-from pydantic import Field
 from typing import Optional
-import boto3
 
+import boto3
+from pydantic import Field
 from vibestream_common.config import BaseServiceSettings, InternalServiceURLsMixin
 
 

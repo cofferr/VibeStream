@@ -1,6 +1,6 @@
 # infrastructure/storage/s3_client.py
-import boto3
 from botocore.exceptions import ClientError
+
 from config import settings
 
 

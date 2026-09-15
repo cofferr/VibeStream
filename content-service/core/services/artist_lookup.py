@@ -1,6 +1,7 @@
 from sqlalchemy import select
-from infrastructure.db.models import Artist
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from infrastructure.db.models import Artist
 
 
 class ArtistLookupService:

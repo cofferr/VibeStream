@@ -1,8 +1,10 @@
 # services/search_service.py
 import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.serializers import serialize_album, serialize_artist, serialize_song
 from strategies.base_strategy import SearchStrategy
-from services.serializers import serialize_song, serialize_album, serialize_artist
 
 logger = logging.getLogger(__name__)
 

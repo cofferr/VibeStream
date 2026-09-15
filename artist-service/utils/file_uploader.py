@@ -1,7 +1,9 @@
 import os
-from fastapi import UploadFile, HTTPException
+from typing import Any, Union
+
+from fastapi import HTTPException, UploadFile
+
 from config import settings
-from typing import Union, Any
 
 
 class FileUploader:

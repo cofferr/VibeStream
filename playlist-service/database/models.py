@@ -7,10 +7,11 @@ endpoint batch de content-service en vez de un join SQL local — es el
 trade-off estándar de microservicios: se cambia un join gratis por una
 llamada de red, a cambio de que cada servicio sea dueño real de su
 esquema."""
-from sqlalchemy import Integer, String, Text, Date, ForeignKey, func
-from sqlalchemy.orm import Mapped, mapped_column
-from typing import Optional
 from datetime import date
+from typing import Optional
+
+from sqlalchemy import Date, ForeignKey, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column
 from vibestream_common.db import Base
 
 

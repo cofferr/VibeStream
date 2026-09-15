@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"streaming-service/aws"
 	"streaming-service/config"
 	"streaming-service/database"
@@ -42,7 +43,9 @@ func main() {
 	r := gin.Default()
 
 	// Configurar trusted proxies (confiar en Nginx y Docker)
-	r.SetTrustedProxies([]string{"172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"})
+	if err := r.SetTrustedProxies([]string{"172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"}); err != nil {
+		log.Fatalf("❌ Error configurando trusted proxies: %v", err)
+	}
 
 	// CORS
 	r.Use(cors.New(cors.Config{
@@ -63,5 +66,7 @@ func main() {
 
 	r.GET("/song/:id/info", handlers.GetSongInfoHandler(songService))
 
-	r.Run(":" + cfg.Port)
+	if err := r.Run(":" + cfg.Port); err != nil {
+		log.Fatalf("❌ Error arrancando servidor HTTP: %v", err)
+	}
 }

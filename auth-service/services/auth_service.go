@@ -6,6 +6,7 @@ import (
 	"auth-service/models"
 	"auth-service/repositories"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -175,7 +176,11 @@ func (s *AuthService) Login(req LoginRequest) (*LoginResponse, error) {
 	refreshToken := uuid.New().String()
 	expiry := time.Now().Add(cfg.RefreshTokenTTL)
 
-	s.refreshTokenRepo.DeleteByUserID(user.ID)
+	// No fatal si falla: un refresh token viejo sin borrar solo significa
+	// que queda una sesión previa activa, no bloquea el login actual.
+	if err := s.refreshTokenRepo.DeleteByUserID(user.ID); err != nil {
+		log.Printf("⚠️ No se pudieron borrar los refresh tokens previos del usuario %d: %v", user.ID, err)
+	}
 
 	newRT := &models.RefreshToken{
 		UserID:    user.ID,

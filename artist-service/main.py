@@ -1,12 +1,13 @@
+import logging
+
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from vibestream_common.errors import make_global_exception_handler
+
+from config import settings
 from handlers.artist_handler import router as artist_router
 from middleware.auth_middleware import AuthMiddleware
-from config import settings
-from vibestream_common.errors import make_global_exception_handler
-import uvicorn
-import logging
 
 logger = logging.getLogger(__name__)
 

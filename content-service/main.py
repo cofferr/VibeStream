@@ -1,13 +1,16 @@
-from config import settings
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from core.handlers.album_handler import router as album_router
-from core.handlers.song_handler import router as song_router
-from middleware.auth_middleware import AuthMiddleware
-from vibestream_common.errors import make_global_exception_handler
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from vibestream_common.errors import make_global_exception_handler
+
+from config import settings
+from core.handlers.album_handler import router as album_router
+from core.handlers.song_handler import router as song_router
+from middleware.auth_middleware import AuthMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +21,6 @@ try:
 except ImportError:
     RABBITMQ_AVAILABLE = False
     print("[!] Módulo events.consumer no disponible")
-
-import uvicorn
-from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager

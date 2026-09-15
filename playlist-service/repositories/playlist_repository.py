@@ -1,11 +1,12 @@
 # core/repositories/playlist_repository.py
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
-from sqlalchemy import func as sql_func
-from database.models import Playlist, PlaylistSong
-from typing import Optional, List
 from datetime import date
+from typing import List, Optional
+
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database.models import Playlist, PlaylistSong
 from errors import RepositoryError
 
 logger = logging.getLogger(__name__)

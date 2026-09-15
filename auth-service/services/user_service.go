@@ -210,10 +210,9 @@ func (s *UserService) UpdateUser(userID uint, req UpdateRequest) (*UserResponse,
 			user.Password = string(hashedPassword)
 			user.LastPasswordChange = &now
 			updatedFields = append(updatedFields, "password")
-		} else {
-			// La contraseña es la misma, podrías devolver un mensaje informativo
-			// return nil, errors.New("la nueva contraseña no puede ser igual a la actual")
 		}
+		// si CompareHashAndPassword no dio error, la contraseña nueva es
+		// igual a la actual: no hay nada que actualizar, no es un error
 	}
 
 	if req.Birthdate != "" {
