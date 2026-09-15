@@ -1,0 +1,171 @@
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    networks:
+      - vibestream-network
+
+  artist-service:
+    build:
+      context: ./artist-service
+      args:
+        - SERVICE_NAME=artist-service
+        - SERVICE_PORT=${ARTIST_PORT:-8002}
+    container_name: artist-service
+    ports:
+      - "${ARTIST_PORT:-8002}:${ARTIST_PORT:-8002}"
+    env_file: .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - vibestream-network
+
+  content-service:
+    build:
+      context: ./content-service
+      args:
+        - SERVICE_NAME=content-service
+        - SERVICE_PORT=${CONTENT_PORT:-8001}
+    container_name: content-service
+    ports:
+      - "${CONTENT_PORT:-8001}:${CONTENT_PORT:-8001}"
+    env_file: .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - vibestream-network
+
+  playlist-service:
+    build:
+      context: ./playlist-service
+      args:
+        - SERVICE_NAME=playlist-service
+        - SERVICE_PORT=${PLAYLIST_PORT:-8004}
+    container_name: playlist-service
+    ports:
+      - "${PLAYLIST_PORT:-8004}:${PLAYLIST_PORT:-8004}"
+    env_file: .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - vibestream-network
+
+  search-service:
+    build:
+      context: ./search-service
+      args:
+        - SERVICE_NAME=search-service
+        - SERVICE_PORT=${SEARCH_PORT:-8006}
+    container_name: search-service
+    ports:
+      - "${SEARCH_PORT:-8006}:${SEARCH_PORT:-8006}"
+    env_file: .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - vibestream-network
+
+  subscription-service:
+    build:
+      context: ./subscription-service
+      args:
+        - SERVICE_NAME=subscription-service
+        - SERVICE_PORT=${SUBSCRIPTION_PORT:-8007}
+    container_name: subscription-service
+    ports:
+      - "${SUBSCRIPTION_PORT:-8007}:${SUBSCRIPTION_PORT:-8007}"
+    env_file: .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - vibestream-network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      args:
+        - SERVICE_NAME=auth-service
+        - SERVICE_PORT=${AUTH_PORT:-8080}
+    container_name: auth-service
+    ports:
+      - "${AUTH_PORT:-8080}:${AUTH_PORT:-8080}"
+    env_file: .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - vibestream-network
+
+  history-service:
+    build:
+      context: ./history-service
+      args:
+        - SERVICE_NAME=history-service
+        - SERVICE_PORT=${HISTORY_PORT:-8005}
+    container_name: history-service
+    ports:
+      - "${HISTORY_PORT:-8005}:${HISTORY_PORT:-8005}"
+    env_file: .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - vibestream-network
+
+  streaming-service:
+    build:
+      context: ./streaming-service
+      args:
+        - SERVICE_NAME=streaming-service
+        - SERVICE_PORT=${STREAMING_PORT:-8003}
+    container_name: streaming-service
+    ports:
+      - "${STREAMING_PORT:-8003}:${STREAMING_PORT:-8003}"
+    env_file: .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - vibestream-network
+
+  front_music_stm:
+    build:
+      context: ./front_music_stm
+    container_name: front_music_stm
+    ports:
+      - "5173:80"
+    depends_on:
+      - auth-service
+      - search-service
+      - content-service
+      - artist-service
+      - playlist-service
+      - subscription-service
+      - history-service
+      - streaming-service
+    environment:
+      - NODE_ENV=production
+    networks:
+      - vibestream-network
+
+networks:
+  vibestream-network:
+    driver: bridge
+
