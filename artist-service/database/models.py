@@ -4,7 +4,7 @@ se declaran aquí como modelos duplicados. user_id deja de ser FK local:
 la validación de que el usuario existe la hace auth-service en el
 registro/login, no una constraint de BD cross-servicio."""
 
-from sqlalchemy import Column, Integer, String, Text, Date, JSON, text
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, text
 from database.connection import Base
 
 
@@ -19,10 +19,10 @@ class Artist(Base):
     profile_pic = Column(String, nullable=True)
     social_links = Column(JSON, nullable=True)
 
-    created_at = Column(Date, server_default=text("CURRENT_DATE"), nullable=False)
+    created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
     updated_at = Column(
-        Date,
-        server_default=text("CURRENT_DATE"),
-        onupdate=text("CURRENT_DATE"),
+        DateTime,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )

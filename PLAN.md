@@ -115,9 +115,29 @@ Cada fase deja el repo en estado funcional (`docker compose up` sigue funcionand
 - Crear una playlist, agregar una canción, consultarla — confirmar que los campos enriquecidos (título, artista, portada) siguen apareciendo, ahora vía HTTP en vez de join local.
 - `docker compose up` arranca correctamente con las nuevas variables `*_SERVICE_URL`.
 
-### ✅ Estado: implementada (2026-09-15) — pendiente de verificación con Docker
+### ✅ Estado: implementada y verificada con Docker (2026-09-15)
 
-Implementada en una máquina sin Docker disponible, así que se validó con `go build`, chequeo de sintaxis Python de los ~40 archivos tocados y trazado manual de cada flujo HTTP/evento — **falta el `docker compose build --no-cache && docker compose up` real y probar el flujo de punta a punta** (crear artista → subir canción → armar playlist → buscar por texto) en un equipo con Docker.
+Implementada originalmente en una máquina sin Docker disponible (validada solo con `go build` + chequeo de sintaxis Python + trazado manual). En esta sesión se corrió la verificación real pendiente: `docker compose build --no-cache` (9 servicios, incluyendo el build context ampliado a raíz de Fase 2) y `docker compose up`, con un Postgres temporal (fuera de `docker-compose.yml`, ver nota) cargado con `schema_reconstruido.sql`.
+
+**Flujo de punta a punta probado y funcionando:** registro de usuario/login (auth-service) → registro de artista → álbum "Sencillos" automático vía evento `artist_created` → canción indexada → playlist creada con la canción, enriquecida vía HTTP a content-service (título/artista/álbum/portada) → búsqueda difusa por texto encuentra canción/álbum/artista vía `search_index` → editar perfil de artista dispara `artist_updated` (fanout) y reindexa en `search_index` → eliminar artista dispara cascada real vía `DELETE /albums/artist/{id}` (álbumes y canciones borrados en `content-service`, confirmado en BD).
+
+**Nota:** `docker-compose.yml` no incluye un servicio Postgres (el proyecto original asume una BD externa, p. ej. RDS, fuera del repo) — para verificar localmente se levantó un contenedor Postgres temporal por fuera de compose, conectado a la red `vibestream_vibestream-network`. Esto no es parte del repo ni se commiteó; si se quiere que `docker compose up` sea autocontenido para demo/entrevista, agregar un servicio `postgres` a `docker-compose.yml` es trabajo nuevo, no cubierto por ningún fase de este plan — decisión pendiente para el usuario.
+
+**Bugs reales encontrados y corregidos durante esta verificación** (no eran hipótesis — bloqueaban el flujo end-to-end):
+
+1. **`content-service/core/entities/album.py` y `song.py`** — `AlbumOut`, `SongOut` y `SongEnrichedOut` tipaban `created_at`/`updated_at` como `date` cuando la columna real en Postgres es `timestamp`. Pydantic rechazaba la validación con `date_from_datetime_inexact` apenas un álbum/canción tenía un timestamp con hora ≠ medianoche — es decir, siempre. Esto rompía `GET /albums/{id}` y `GET /songs/{id}/enriched`, los dos endpoints exactos que search-service y playlist-service usan para el enriquecimiento HTTP de Fase 3. Corregido a `datetime`.
+
+2. **`shared-python/vibestream_common/auth_middleware.py`** — el middleware lanzaba `HTTPException` dentro de `dispatch()` (un método de `BaseHTTPMiddleware`). Starlette registra el handler pasado a `add_exception_handler(Exception, ...)` como el `error_handler` de `ServerErrorMiddleware`, que envuelve TODOS los middlewares de usuario, no solo las rutas — así que cualquier `HTTPException` lanzada en `AuthMiddleware` era interceptada por ese catch-all antes de llegar al manejo específico de `HTTPException` de FastAPI, y se aplanaba a un 500 genérico. **Resultado: cualquier request sin JWT o con JWT inválido devolvía 500 en vez de 401 en los 5 servicios Python** (bug universal introducido al extraer el middleware a `vibestream_common` en Fase 2, no visible mientras cada servicio tenía su copia porque nunca se probó el flujo real contra un stack completo). Corregido devolviendo `JSONResponse` directamente en vez de `raise`, con headers CORS explícitos (se agregó `cors_origin` al constructor, igual que ya existía para `make_global_exception_handler`).
+
+3. **`playlist-service/main.py` y `subscription-service/main.py`** — nunca registraron el `app.add_exception_handler(Exception, make_global_exception_handler(...))` que sí tienen artist/content/search-service (gap real de Fase 1, no capturado en su momento). Sin él, cualquier excepción no capturada por `@handle_errors`/try-except local salía como texto plano sin headers CORS, lo que el navegador del frontend bloquearía como error de CORS antes de que el JS viera el status real. Agregado en ambos, mismo patrón que los otros 3 servicios.
+
+4. **`artist-service/database/models.py`** — el modelo SQLAlchemy declaraba `created_at`/`updated_at` como `Date` con `server_default/onupdate=CURRENT_DATE`, pero la columna real en Postgres es `timestamp`. Cada `UPDATE` truncaba `updated_at` a medianoche (`2026-09-15T00:00:00`), perdiendo la hora real — mismo patrón de bug que el punto 1 pero del lado de escritura. Corregido a `DateTime`/`CURRENT_TIMESTAMP`.
+
+**Gap real encontrado, no corregido (pendiente de decisión):** al eliminar un artista, sus álbumes/canciones se borran en cascada en `content-service` (confirmado), pero **no se publica ningún evento `artist_deleted`/`song_deleted`/`album_deleted`**, así que las entradas correspondientes quedan huérfanas en `search_index` de search-service — un usuario podría seguir encontrando por búsqueda un artista/álbum/canción ya eliminado. Ninguna fase del plan original cubre eventos de borrado explícitamente. Opciones: (a) agregarlo al alcance de Fase 4 (ya toca la topología de eventos), o (b) documentarlo como limitación aceptada para el alcance de portfolio — buena pregunta de entrevista de todos modos ("¿qué pasa si...?").
+
+**Pendiente real remanente:**
+- Subir una canción por el flujo real (`POST /songs`) requiere credenciales AWS S3 válidas — no disponibles en este entorno de verificación. Se probó el resto del flujo insertando una fila de canción directamente en BD y publicando manualmente el evento `song_created` que el endpoint real publicaría; la lógica de enriquecimiento/indexado en sí quedó validada, pero el upload a S3 en sí no se ejercitó end-to-end.
+- No se revisó la UI de RabbitMQ manualmente (se usó la API HTTP de management, que confirmó los exchanges fanout `artist_created`/`artist_updated` con sus colas nombradas y las colas bare `song_created`/`song_updated`/`album_created`/`album_updated`, tal como documenta el punto 2 de "Cambios respecto al texto original" arriba).
 
 **Cambios respecto al texto original del plan, decididos con el usuario durante la implementación:**
 
@@ -163,6 +183,34 @@ Implementada en una máquina sin Docker disponible, así que se validó con `go 
 - Forzar una excepción en un consumer y confirmar que el mensaje termina en la DLQ, no desaparece ni hace loop.
 - Crear un artista → confirmar que sigue creándose el álbum "Sencillos" (regresión).
 - Crear/editar una canción en content-service → confirmar que el índice de search-service se actualiza sin query directa a la BD.
+
+### ✅ Estado: implementada y verificada con Docker (2026-09-15)
+
+**Cambios respecto al texto original del plan, decididos con el usuario durante la implementación:**
+
+1. **Se agregó el alcance de eventos de borrado** (`artist_deleted`, `album_deleted`, `song_deleted`), no mencionado en el texto original de esta fase. Surgió como gap real encontrado durante la verificación de Fase 3: al eliminar un artista, sus álbumes/canciones se borraban en cascada en `content-service` pero `search_index` en search-service quedaba con entradas huérfanas (un usuario podía seguir "encontrando" por búsqueda un artista/canción ya eliminado). El usuario decidió explícitamente incorporar la corrección al alcance de esta fase en vez de dejarla como limitación aceptada.
+   - `content-service/events/producer.py` — nuevos `publish_album_deleted_event`/`publish_song_deleted_event`.
+   - `content-service/core/services/album_service.py` (`delete_album`) y `song_service.py` (`delete_song`) — publican el evento correspondiente tras el borrado (capturando el id *antes* del `commit()`, porque SQLAlchemy expira el objeto tras borrar+commitear y acceder a `.id` después dispara un refresh contra una fila que ya no existe).
+   - `artist-service/events/events.py` — nuevo `publish_artist_deleted_event`; `artist-service/services/artist_service.py` (`delete_artist_by_user`) lo publica tras borrar localmente (mismo cuidado con capturar el id antes del delete).
+   - `search-service/events/consumer.py` — nuevos handlers `handle_song_deleted`/`handle_album_deleted`/`handle_artist_deleted` que borran la fila de `search_index` por `(entity_type, entity_id)`.
+
+2. **Estandarización a fanout se hizo total, incluyendo los eventos de borrado nuevos**, aunque hoy tengan un solo consumer (search-service) — se prefirió consistencia con el resto de la topología ("una sola topología de exchange consistente" del objetivo de esta fase) en vez de dejar una excepción bare-queue que habría que revisitar si aparece un segundo consumer.
+
+3. **DLQ compartida implementada como paquete reusable en ambos lenguajes**, no solo como argumento repetido en cada `declare_queue`: `shared-python/vibestream_common/rabbitmq.py` (`declare_dlq`, `declare_fanout_queue`) y `shared-go/rabbitmq/dlq.go` (`DeclareDLQ`, `WorkQueueArgs`) — mismo exchange `dlx` (fanout) + cola `dlq`, un único punto de definición por lenguaje en vez de repetir la declaración en cada servicio.
+
+4. **DLQ se extendió a `history-service`/`streaming-service` (Go)**, no mencionado explícitamente en el texto original de esta fase (que hablaba de DLQ en términos de `declare_queue` de Python). Se encontró que `history-service/events/consumer.go` hacía `d.Nack(false, true)` ante un error de procesamiento — **requeue infinito real**, exactamente el patrón que el objetivo de esta fase busca eliminar ("resulta en un 500 real y `requeue=false`"). Se cambió a `Nack(false, false)` con la cola `song_events_queue` configurada con `x-dead-letter-exchange`, en ambos lados (consumer y publisher deben declarar la cola con argumentos idénticos o RabbitMQ rechaza la segunda declaración).
+
+5. **Bug real encontrado y corregido al verificar la migración a fanout de `song_created`/`album_created`:** los handlers de `search-service/events/consumer.py` capturaban `InternalServiceError` (fallo real de red/5xx llamando a content-service) y hacían `return` silencioso en vez de re-lanzar. Con `message.process()` de aio-pika, eso significa que el mensaje se **ACKeaba como exitoso** aunque el enriquecimiento hubiera fallado — el mismo "drop silencioso" que motivó esta fase, pero a nivel de lógica de negocio, no de configuración de cola. Se corrigió re-lanzando en el bloque `except InternalServiceError`, para que el mensaje se rechace y termine en la DLQ. **Confirmado experimentalmente**: se detuvo `content-service`, se publicó un `song_created` manualmente, y el mensaje apareció en `dlq` (antes de este fix se habría perdido sin dejar rastro).
+
+**Verificación real ejecutada (Docker):**
+- `docker compose build` (Go y Python afectados) + `go build ./...` en `shared-go`, `history-service`, `streaming-service`, `auth-service` — todo compila.
+- RabbitMQ management API confirma: **9 exchanges fanout** de dominio (`artist_created/updated/deleted`, `album_created/updated/deleted`, `song_created/updated/deleted`) + `dlx`, y cada cola de trabajo con `x-dead-letter-exchange: dlx` en sus argumentos.
+- Registrar artista → álbum "Sencillos" + indexado de ambos en `search_index` (regresión de Fase 3, sigue funcionando tras la migración bare→fanout).
+- Eliminar artista → `search_index` queda limpio de artista y álbum (antes quedaban huérfanos — este es el gap que pediste incorporar a esta fase).
+- DLQ real: `content-service` detenido → evento `song_created` publicado → falla el enriquecimiento (timeout) → mensaje aparece en `dlq` (1 mensaje) en vez de perderse.
+- `playlist-service`/`subscription-service` arrancan sin `aio-pika` en `requirements.txt` (confirmado sin uso en ningún import antes de quitarlo).
+
+**Nota operativa para quien reproduzca esto:** las colas bare viejas (`song_created`, `album_created`, etc.) y las colas nombradas de Fase 3 sin argumento DLQ (`search_service.artist_created`, `content_service.artist_created`) tuvieron que borrarse manualmente una vez (vía la management API) porque RabbitMQ rechaza redeclarar una cola existente con argumentos distintos (`PRECONDITION_FAILED`). En un `docker compose down -v` limpio (sin volumen persistente de RabbitMQ) esto no aplica — es solo relevante si se itera sobre un broker que ya tenía la topología vieja.
 
 ---
 

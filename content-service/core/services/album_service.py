@@ -1,7 +1,12 @@
 from datetime import date
 from infrastructure.db.models import Album, Song
 from core.repositories.album_repository import AlbumRepository
-from events.producer import publish_album_created_event, publish_album_updated_event
+from events.producer import (
+    publish_album_created_event,
+    publish_album_updated_event,
+    publish_album_deleted_event,
+    publish_song_deleted_event,
+)
 from core.services.artist_lookup import ArtistLookupService
 import os
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -178,8 +183,20 @@ class AlbumService:
                 if key:
                     delete_from_s3(settings.aws_s3_bucket, key)
 
-        # Eliminar álbum de la base de datos
+        album_id = album.id
+        song_ids = [song.id for song in songs]
+
+        # Eliminar álbum de la base de datos (esto también borra las
+        # canciones del álbum a nivel de aplicación, ver AlbumRepository.delete)
         await self.repo.delete(album)
+
+        # Publicar eventos de borrado para que search-service limpie las
+        # entradas correspondientes de su search_index (Fase 4: antes de
+        # esto, borrar un álbum/artista dejaba resultados de búsqueda
+        # huérfanos apuntando a contenido inexistente)
+        for song_id in song_ids:
+            await publish_song_deleted_event(song_id)
+        await publish_album_deleted_event(album_id)
 
     async def list_songs_by_album(self, album_id: int) -> list[Song]:
         """Lista todas las canciones de un álbum"""

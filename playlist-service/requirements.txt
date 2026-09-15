@@ -1,4 +1,8 @@
-aio-pika==9.5.7
+# Fase 4: se evaluó y descartó RabbitMQ para este servicio — sus
+# necesidades de datos de otros servicios ya se resuelven con las
+# llamadas HTTP síncronas de InternalHTTPClient (Fase 3), y no hay un
+# caso de uso real de evento asíncrono en el alcance actual. aio-pika
+# estaba en requirements.txt sin usarse en ningún import.
 asyncpg==0.30.0
 fastapi==0.116.1
 pydantic==2.11.7

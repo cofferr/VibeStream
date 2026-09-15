@@ -8,6 +8,7 @@ from core.repositories.album_repository import AlbumRepository
 from core.services.album_service import AlbumService
 from core.services.artist_lookup import ArtistLookupService
 from config import settings
+from vibestream_common.rabbitmq import declare_dlq, declare_fanout_queue
 
 
 # Ya no se necesita crear estructura de carpetas local
@@ -16,7 +17,7 @@ from config import settings
 
 async def handle_artist_created(message: AbstractIncomingMessage) -> None:
     """Cuando se crea un artista, se crea automáticamente el álbum 'Sencillos' y su estructura de carpetas"""
-    async with message.process():
+    async with message.process(requeue=False):
         try:
             data = json.loads(message.body.decode())
             user_id = data.get("user_id")
@@ -65,13 +66,10 @@ async def consume_events():
     propia cola nombrada, para no repartirse los mensajes entre sí."""
     connection = await aio_pika.connect_robust(settings.rabbitmq_url)
     channel = await connection.channel()
-    exchange = await channel.declare_exchange(
-        "artist_created", aio_pika.ExchangeType.FANOUT, durable=True
+    await declare_dlq(channel)
+    queue = await declare_fanout_queue(
+        channel, "artist_created", "content_service.artist_created"
     )
-    queue = await channel.declare_queue(
-        "content_service.artist_created", durable=True
-    )
-    await queue.bind(exchange)
     await queue.consume(handle_artist_created)
     print("[*] Esperando eventos artist_created...")
     return connection

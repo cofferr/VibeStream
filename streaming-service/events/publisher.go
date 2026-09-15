@@ -10,6 +10,7 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"vibestream/shared/rabbitmq"
 )
 
 // Estructura del evento
@@ -98,14 +99,22 @@ func (p *EventPublisher) setupInfrastructure(ch *amqp.Channel) error {
 		return fmt.Errorf("error al declarar exchange: %w", err)
 	}
 
+	// Fase 4: DLQ compartida — debe declararse con los mismos argumentos
+	// que history-service.events.consumer.go, que declara esta misma cola;
+	// si difieren, RabbitMQ rechaza la segunda declaración con un error de
+	// canal (PRECONDITION_FAILED).
+	if err := rabbitmq.DeclareDLQ(ch); err != nil {
+		return fmt.Errorf("error al declarar DLQ: %w", err)
+	}
+
 	// Declarar cola
 	queue, err := ch.QueueDeclare(
-		"song_events_queue", // nombre
-		true,                // durable
-		false,               // delete when unused
-		false,               // exclusive
-		false,               // no-wait
-		nil,                 // argumentos
+		"song_events_queue",      // nombre
+		true,                     // durable
+		false,                    // delete when unused
+		false,                    // exclusive
+		false,                    // no-wait
+		rabbitmq.WorkQueueArgs(), // argumentos
 	)
 	if err != nil {
 		return fmt.Errorf("error al declarar cola: %w", err)

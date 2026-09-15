@@ -37,3 +37,10 @@ async def publish_artist_updated_event(artist_data: dict):
     """Mantiene actualizado el search_index de search-service cuando
     cambia el nombre/bio de un artista (Fase 3/4: CQRS de búsqueda)."""
     await _publish("artist_updated", artist_data)
+
+
+async def publish_artist_deleted_event(artist_id: int):
+    """search-service limpia la entrada del artista en su search_index.
+    content-service no necesita este evento: ya se le avisa síncronamente
+    vía DELETE /albums/artist/{id} antes de borrar el artista local."""
+    await _publish("artist_deleted", {"id": artist_id})

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List
 
 from .song import SongOut  # import circular controlado con forward refs
@@ -22,8 +22,8 @@ class AlbumUpdate(AlbumBase):
 class AlbumOut(AlbumBase):
     id: int
     artist_id: int
-    created_at: Optional[date]
-    updated_at: Optional[date]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
     # songs: List["SongOut"] = []  # quitar
 
     class Config:

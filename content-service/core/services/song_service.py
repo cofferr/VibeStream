@@ -3,7 +3,11 @@ from pathlib import Path
 from mutagen._file import File as MutagenFile
 from infrastructure.db.models import Song, Artist
 from core.repositories.song_repository import SongRepository
-from events.producer import publish_song_created_event, publish_song_updated_event
+from events.producer import (
+    publish_song_created_event,
+    publish_song_updated_event,
+    publish_song_deleted_event,
+)
 from core.services.artist_lookup import ArtistLookupService
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -293,8 +297,13 @@ class SongService:
         if song.audio_url:
             self._delete_audio_file(song.audio_url)
 
+        song_id = song.id
+
         # Eliminar canción de la base de datos
         await self.repo.delete(song)
+
+        # search-service limpia su search_index al recibir esto (Fase 4)
+        await publish_song_deleted_event(song_id)
 
     async def get_song(self, song_id: int) -> Song | None:
         """Obtiene una canción por ID"""

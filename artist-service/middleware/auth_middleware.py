@@ -19,6 +19,9 @@ class AuthMiddleware(_BaseAuthMiddleware):
             jwt_secret=settings.jwt_secret,
             jwt_algorithm=settings.jwt_algorithm,
             public_path_prefixes=("/health", "/files"),
+            cors_origin=settings.frontend_origins[0]
+            if settings.frontend_origins != ["*"]
+            else "*",
         )
 
     async def dispatch(

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"vibestream/shared/rabbitmq"
 )
 
 func StartConsumer(ctx context.Context, svc *services.HistoryService) error {
@@ -45,7 +46,13 @@ func StartConsumer(ctx context.Context, svc *services.HistoryService) error {
 		return err
 	}
 
-	queue, err := ch.QueueDeclare("song_events_queue", true, false, false, false, nil)
+	// Fase 4: DLQ compartida — un mensaje que este consumer rechaza sin
+	// reintentar (ver Nack más abajo) termina en dlq en vez de perderse.
+	if err := rabbitmq.DeclareDLQ(ch); err != nil {
+		return err
+	}
+
+	queue, err := ch.QueueDeclare("song_events_queue", true, false, false, false, rabbitmq.WorkQueueArgs())
 	if err != nil {
 		return err
 	}
@@ -71,7 +78,12 @@ func StartConsumer(ctx context.Context, svc *services.HistoryService) error {
 
 			if err := svc.HandleSongPlayedEvent(ctx, evt); err != nil {
 				log.Printf("❌ Error procesando evento: %v", err)
-				d.Nack(false, true)
+				// Fase 4: antes reintentaba infinito (requeue=true), lo que
+				// podía trabar el consumer en un mensaje envenenado para
+				// siempre. Ahora se rechaza sin reintentar: la cola tiene
+				// dead-letter-exchange configurado, así que termina en dlq
+				// en vez de perderse o hacer loop.
+				d.Nack(false, false)
 				continue
 			}
 

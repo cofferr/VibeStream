@@ -1,6 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from services.repositories.artist_repository import ArtistRepository
-from events.events import publish_artist_created_event, publish_artist_updated_event
+from events.events import (
+    publish_artist_created_event,
+    publish_artist_updated_event,
+    publish_artist_deleted_event,
+)
 from models.artist import (
     ArtistCreateSchema,
     ArtistUpdateSchema,
@@ -127,5 +131,12 @@ class ArtistService:
             )
             raise
 
+        artist_id = artist.id
         await ArtistRepository.delete(db, artist)
+
+        # captura artist_id antes del delete: tras el commit el objeto
+        # queda expirado y acceder a artist.id dispararía un refresh
+        # contra una fila que ya no existe
+        asyncio.create_task(publish_artist_deleted_event(artist_id))
+
         return True

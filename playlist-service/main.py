@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from handlers.playlist_handlers import router as playlist_router
 from middleware.auth_middleware import AuthMiddleware
+from vibestream_common.errors import make_global_exception_handler
 import uvicorn
 from config import settings
 import logging
@@ -44,6 +45,18 @@ app.add_middleware(AuthMiddleware)
 
 # Router de playlists
 app.include_router(playlist_router, prefix="/playlists", tags=["playlists"])
+
+# Manejo global de excepciones no capturadas por @handle_errors (asegura
+# headers CORS y body saneado también fuera de los handlers de ruta, p.
+# ej. errores de middleware o de inyección de dependencias)
+app.add_exception_handler(
+    Exception,
+    make_global_exception_handler(
+        cors_origin=settings.frontend_origins[0]
+        if settings.frontend_origins != ["*"]
+        else "*"
+    ),
+)
 
 # Health check
 @app.get("/health")

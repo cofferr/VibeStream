@@ -1,4 +1,6 @@
-aio-pika==9.5.7
+# Fase 4: mismo razonamiento que playlist-service (ver su
+# requirements.txt) — sin caso de uso real de evento asíncrono hoy,
+# aio-pika no se usaba en ningún import.
 asyncpg==0.30.0
 fastapi==0.116.1
 pydantic==2.11.7

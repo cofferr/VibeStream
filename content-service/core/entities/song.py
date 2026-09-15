@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List
 
 from .artist import ArtistOut  # forward refs
@@ -55,8 +55,8 @@ class SongOut(SongBase):
     id: int
     album_id: int
     genre_id: Optional[int]
-    created_at: Optional[date]
-    updated_at: Optional[date]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
     # artists: List["ArtistOut"] = []
 
     class Config:
@@ -75,8 +75,8 @@ class SongEnrichedOut(SongBase):
     artist_id: Optional[int] = None
     artist_name: Optional[str] = None
     genre_id: Optional[int]
-    created_at: Optional[date]
-    updated_at: Optional[date]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
 
     class Config:
         from_attributes = True

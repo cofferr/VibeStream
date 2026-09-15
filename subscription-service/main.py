@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from handlers.subscription_handler import router as subscription_router
 from middleware.auth_middleware import AuthMiddleware
+from vibestream_common.errors import make_global_exception_handler
 from config import settings
 import uvicorn
 
@@ -27,6 +28,17 @@ app.include_router(subscription_router, prefix="/subscriptions", tags=["Subscrip
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+# Manejo global de excepciones (saneado + headers CORS en errores)
+app.add_exception_handler(
+    Exception,
+    make_global_exception_handler(
+        cors_origin=settings.frontend_origins[0]
+        if settings.frontend_origins != ["*"]
+        else "*"
+    ),
+)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,17 @@ album_created/updated de content-service llevan solo ids, así que el
 consumer llama a los endpoints enriquecidos de content-service para
 obtener título/artista/portada antes de indexar — evita duplicar esa
 lógica de enriquecimiento aquí y mantiene una sola fuente de verdad.
-artist_created/updated se auto-contienen (ya traen artist_name)."""
+artist_created/updated se auto-contienen (ya traen artist_name).
+
+Fase 4: todos los eventos usan exchange fanout + cola nombrada
+(estandarizado, antes song/album usaban el exchange default de
+RabbitMQ) y cada cola de trabajo declara la dead-letter-exchange
+compartida (`vibestream_common.rabbitmq`) para no perder mensajes
+fallidos en silencio. Los eventos *_deleted (nuevos en esta fase)
+limpian la entrada correspondiente en vez de enriquecerla: sin esto,
+borrar un artista/álbum/canción en content-service/artist-service
+dejaba resultados de búsqueda huérfanos apuntando a contenido que ya
+no existe."""
 
 import asyncio
 import json
@@ -12,13 +22,14 @@ import logging
 
 import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
-from sqlalchemy import func
+from sqlalchemy import delete as sa_delete, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from config import settings
 from database.connection import AsyncSessionLocal
 from database.models import SearchIndexEntry
 from vibestream_common.http_client import InternalHTTPClient, InternalServiceError
+from vibestream_common.rabbitmq import declare_dlq, declare_fanout_queue
 
 logger = logging.getLogger(__name__)
 
@@ -38,22 +49,43 @@ async def _upsert(entity_type: str, entity_id: int, fields: dict) -> None:
         await session.commit()
 
 
+async def _delete_from_index(entity_type: str, entity_id: int) -> None:
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            sa_delete(SearchIndexEntry).where(
+                SearchIndexEntry.entity_type == entity_type,
+                SearchIndexEntry.entity_id == entity_id,
+            )
+        )
+        await session.commit()
+
+
+def _parse_id(message: AbstractIncomingMessage, entity_label: str) -> int | None:
+    data = json.loads(message.body.decode())
+    entity_id = data.get("id")
+    if not entity_id:
+        logger.warning("Evento de %s inválido: falta id", entity_label)
+    return entity_id
+
+
 async def handle_song_event(message: AbstractIncomingMessage) -> None:
-    async with message.process():
+    async with message.process(requeue=False):
         try:
-            data = json.loads(message.body.decode())
-            song_id = data.get("id")
+            song_id = _parse_id(message, "canción")
             if not song_id:
-                logger.warning("Evento de canción inválido: falta id")
                 return
 
             try:
                 response = await content_client.get(f"/songs/{song_id}/enriched")
             except InternalServiceError:
+                # Fallo real (5xx/timeout/red), no "no existe" (eso es un
+                # 404 -> None, manejado abajo): re-lanzar para que el
+                # mensaje termine en la DLQ en vez de ACKearse como si
+                # hubiera indexado correctamente.
                 logger.exception(
                     "No se pudo enriquecer canción %s desde content-service", song_id
                 )
-                return
+                raise
 
             song = (response or {}).get("data")
             if not song:
@@ -79,15 +111,29 @@ async def handle_song_event(message: AbstractIncomingMessage) -> None:
             logger.error("Evento de canción inválido: no es JSON")
         except Exception:
             logger.exception("Error procesando evento de canción")
+            raise
+
+
+async def handle_song_deleted(message: AbstractIncomingMessage) -> None:
+    async with message.process(requeue=False):
+        try:
+            song_id = _parse_id(message, "canción")
+            if not song_id:
+                return
+            await _delete_from_index("song", song_id)
+            logger.info("[✓] search_index: song %s eliminado", song_id)
+        except json.JSONDecodeError:
+            logger.error("Evento song_deleted inválido: no es JSON")
+        except Exception:
+            logger.exception("Error procesando evento song_deleted")
+            raise
 
 
 async def handle_album_event(message: AbstractIncomingMessage) -> None:
-    async with message.process():
+    async with message.process(requeue=False):
         try:
-            data = json.loads(message.body.decode())
-            album_id = data.get("id")
+            album_id = _parse_id(message, "álbum")
             if not album_id:
-                logger.warning("Evento de álbum inválido: falta id")
                 return
 
             try:
@@ -96,7 +142,7 @@ async def handle_album_event(message: AbstractIncomingMessage) -> None:
                 logger.exception(
                     "No se pudo enriquecer álbum %s desde content-service", album_id
                 )
-                return
+                raise
 
             album = (response or {}).get("data")
             if not album:
@@ -122,10 +168,26 @@ async def handle_album_event(message: AbstractIncomingMessage) -> None:
             logger.error("Evento de álbum inválido: no es JSON")
         except Exception:
             logger.exception("Error procesando evento de álbum")
+            raise
+
+
+async def handle_album_deleted(message: AbstractIncomingMessage) -> None:
+    async with message.process(requeue=False):
+        try:
+            album_id = _parse_id(message, "álbum")
+            if not album_id:
+                return
+            await _delete_from_index("album", album_id)
+            logger.info("[✓] search_index: album %s eliminado", album_id)
+        except json.JSONDecodeError:
+            logger.error("Evento album_deleted inválido: no es JSON")
+        except Exception:
+            logger.exception("Error procesando evento album_deleted")
+            raise
 
 
 async def handle_artist_event(message: AbstractIncomingMessage) -> None:
-    async with message.process():
+    async with message.process(requeue=False):
         try:
             data = json.loads(message.body.decode())
             artist_id = data.get("id")
@@ -152,48 +214,51 @@ async def handle_artist_event(message: AbstractIncomingMessage) -> None:
             logger.error("Evento de artista inválido: no es JSON")
         except Exception:
             logger.exception("Error procesando evento de artista")
+            raise
+
+
+async def handle_artist_deleted(message: AbstractIncomingMessage) -> None:
+    async with message.process(requeue=False):
+        try:
+            artist_id = _parse_id(message, "artista")
+            if not artist_id:
+                return
+            await _delete_from_index("artist", artist_id)
+            logger.info("[✓] search_index: artist %s eliminado", artist_id)
+        except json.JSONDecodeError:
+            logger.error("Evento artist_deleted inválido: no es JSON")
+        except Exception:
+            logger.exception("Error procesando evento artist_deleted")
+            raise
+
+
+# (exchange, cola propia de search-service, handler) — un solo lugar para
+# ver toda la suscripción de eventos del servicio.
+_SUBSCRIPTIONS = (
+    ("song_created", "search_service.song_created", handle_song_event),
+    ("song_updated", "search_service.song_updated", handle_song_event),
+    ("song_deleted", "search_service.song_deleted", handle_song_deleted),
+    ("album_created", "search_service.album_created", handle_album_event),
+    ("album_updated", "search_service.album_updated", handle_album_event),
+    ("album_deleted", "search_service.album_deleted", handle_album_deleted),
+    ("artist_created", "search_service.artist_created", handle_artist_event),
+    ("artist_updated", "search_service.artist_updated", handle_artist_event),
+    ("artist_deleted", "search_service.artist_deleted", handle_artist_deleted),
+)
 
 
 async def consume_events():
-    """Suscripción a los eventos que alimentan el search_index local.
-
-    song_created/updated y album_created/updated siguen el patrón bare de
-    content-service (una sola cola, sin fanout: search-service es su único
-    consumidor hoy). artist_created/updated usan fanout porque
-    content-service también necesita recibir artist_created para su propio
-    flujo (auto-creación del álbum 'Sencillos')."""
+    """Suscripción a todos los eventos que alimentan el search_index
+    local, vía exchange fanout + cola propia por evento (Fase 4:
+    topología consistente, antes song/album usaban el exchange default
+    de RabbitMQ)."""
     connection = await aio_pika.connect_robust(settings.rabbitmq_url)
     channel = await connection.channel()
+    await declare_dlq(channel)
 
-    song_created_q = await channel.declare_queue("song_created", durable=True)
-    await song_created_q.consume(handle_song_event)
-
-    song_updated_q = await channel.declare_queue("song_updated", durable=True)
-    await song_updated_q.consume(handle_song_event)
-
-    album_created_q = await channel.declare_queue("album_created", durable=True)
-    await album_created_q.consume(handle_album_event)
-
-    album_updated_q = await channel.declare_queue("album_updated", durable=True)
-    await album_updated_q.consume(handle_album_event)
-
-    artist_created_exchange = await channel.declare_exchange(
-        "artist_created", aio_pika.ExchangeType.FANOUT, durable=True
-    )
-    artist_created_q = await channel.declare_queue(
-        "search_service.artist_created", durable=True
-    )
-    await artist_created_q.bind(artist_created_exchange)
-    await artist_created_q.consume(handle_artist_event)
-
-    artist_updated_exchange = await channel.declare_exchange(
-        "artist_updated", aio_pika.ExchangeType.FANOUT, durable=True
-    )
-    artist_updated_q = await channel.declare_queue(
-        "search_service.artist_updated", durable=True
-    )
-    await artist_updated_q.bind(artist_updated_exchange)
-    await artist_updated_q.consume(handle_artist_event)
+    for exchange_name, queue_name, handler in _SUBSCRIPTIONS:
+        queue = await declare_fanout_queue(channel, exchange_name, queue_name)
+        await queue.consume(handler)
 
     logger.info("[*] Esperando eventos para actualizar search_index...")
     return connection
