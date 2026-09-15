@@ -48,8 +48,5 @@ subscription-service/__pycache__/
 # Claude Code internal files
 .claude/
 
-# Plan de remediación (uso interno, no forma parte del proyecto)
-PLAN.md
-
 # Artefactos de build de paquetes Python editables
 *.egg-info/
