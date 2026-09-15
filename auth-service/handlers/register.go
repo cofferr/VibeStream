@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"auth-service/services"
+	"auth-service/utils"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -13,24 +15,25 @@ func Register(userService services.UserServiceInterface) gin.HandlerFunc {
 		var input services.RegisterRequest
 
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			utils.RespondError(c, http.StatusBadRequest, err, "datos de solicitud inválidos")
 			return
 		}
 
 		user, err := userService.RegisterUser(input)
 		if err != nil {
 			statusCode := http.StatusInternalServerError
+			publicMsg := "no se pudo registrar el usuario"
 
-			switch err.Error() {
-			case "fecha inválida, formato esperado YYYY-MM-DD":
+			switch {
+			case errors.Is(err, services.ErrInvalidBirthdate):
 				statusCode = http.StatusBadRequest
-			case "usuario o email ya registrados":
+				publicMsg = err.Error()
+			case errors.Is(err, services.ErrUserAlreadyExists):
 				statusCode = http.StatusConflict
-			case "no se pudo encriptar la contraseña":
-				statusCode = http.StatusInternalServerError
+				publicMsg = err.Error()
 			}
 
-			c.JSON(statusCode, gin.H{"error": err.Error()})
+			utils.RespondError(c, statusCode, err, publicMsg)
 			return
 		}
 

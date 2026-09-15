@@ -1,4 +1,5 @@
 # core/repositories/playlist_repository.py
+import logging
 import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
@@ -7,6 +8,9 @@ from database.models import Playlist, PlaylistSong
 from typing import Optional, Dict, Any, List
 from datetime import date
 from config import settings
+from errors import RepositoryError
+
+logger = logging.getLogger(__name__)
 
 
 class PlaylistRepository:
@@ -180,9 +184,12 @@ class PlaylistRepository:
             await self.session.commit()
             return True
 
-        except Exception:
+        except Exception as e:
             await self.session.rollback()
-            return False
+            logger.exception(
+                "Error de BD añadiendo canción %s a playlist %s", song_id, playlist_id
+            )
+            raise RepositoryError("No se pudo añadir la canción a la playlist") from e
 
     async def remove_song_from_playlist(
         self, playlist_id: int, song_id: int, user_id: int
@@ -208,9 +215,12 @@ class PlaylistRepository:
             await self.session.commit()
             return True
 
-        except Exception:
+        except Exception as e:
             await self.session.rollback()
-            return False
+            logger.exception(
+                "Error de BD eliminando canción %s de playlist %s", song_id, playlist_id
+            )
+            raise RepositoryError("No se pudo eliminar la canción de la playlist") from e
 
     async def get_user_playlists(
         self, user_id: int, limit: int = 50, offset: int = 0
@@ -239,8 +249,9 @@ class PlaylistRepository:
             playlists = result.scalars().all()
             return list(playlists)
 
-        except Exception:
-            return []
+        except Exception as e:
+            logger.exception("Error de BD obteniendo playlists de usuario %s", user_id)
+            raise RepositoryError("No se pudieron obtener las playlists") from e
 
     async def count_user_playlists(self, user_id: int) -> int:
         """Contar el total de playlists de un usuario"""
@@ -252,5 +263,6 @@ class PlaylistRepository:
             )
             result = await self.session.execute(stmt)
             return result.scalar() or 0
-        except Exception:
-            return 0
+        except Exception as e:
+            logger.exception("Error de BD contando playlists de usuario %s", user_id)
+            raise RepositoryError("No se pudieron contar las playlists") from e

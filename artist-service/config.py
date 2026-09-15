@@ -3,6 +3,9 @@ from pydantic_settings import BaseSettings
 from typing import List, Optional
 import boto3
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -49,7 +52,11 @@ class Settings(BaseSettings):
                 if isinstance(parsed, list):
                     return [str(x).strip() for x in parsed if x]
             except Exception:
-                pass
+                logger.warning(
+                    "FRONTEND_ORIGINS parece una lista JSON pero no pudo parsearse; "
+                    "se usará el parseo por comas como fallback: %r",
+                    raw,
+                )
         return [p.strip() for p in s.split(",") if p.strip()]
 
     def get_s3_client(self):

@@ -3,6 +3,8 @@ package handlers
 
 import (
 	"auth-service/services"
+	"auth-service/utils"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -33,11 +35,13 @@ func GetCurrentUser(userService services.UserServiceInterface) gin.HandlerFunc {
 		user, err := userService.GetUserDetails(userID)
 		if err != nil {
 			statusCode := http.StatusInternalServerError
-			if err.Error() == "usuario no encontrado" {
+			publicMsg := "no se pudo obtener el usuario"
+			if errors.Is(err, services.ErrUserNotFound) {
 				statusCode = http.StatusNotFound
+				publicMsg = err.Error()
 			}
 
-			c.JSON(statusCode, gin.H{"error": err.Error()})
+			utils.RespondError(c, statusCode, err, publicMsg)
 			return
 		}
 

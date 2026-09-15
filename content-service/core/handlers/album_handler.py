@@ -8,9 +8,12 @@ from core.entities.album import AlbumOut, SongOut
 from utils.json_response import success_response, error_response
 from datetime import date
 from typing import Optional
+import logging
 
 # 🔹 Importar validación de ownership
 from utils.ownership import validate_album_ownership
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/albums", tags=["albums"])
 
@@ -21,15 +24,13 @@ async def get_my_albums(request: Request, db: AsyncSession = Depends(get_db)):
     """Obtiene todos los álbumes del usuario autenticado con información completa"""
     # Verificar si el request.state.user existe
     if not hasattr(request.state, "user"):
-        print("❌ No hay request.state.user")
+        logger.warning("Solicitud a /my-albums sin request.state.user")
         return error_response(422, "Información de usuario no disponible en el request")
 
     user_id = request.state.user.get("user_id")
     if not user_id:
-        print("❌ No hay user_id en request.state.user")
+        logger.warning("Solicitud a /my-albums sin user_id en request.state.user")
         return error_response(422, "User ID no disponible en el request")
-
-    print(f"🔍 User ID: {user_id}")
 
     service = AlbumService(AlbumRepository(db))
 
@@ -38,22 +39,20 @@ async def get_my_albums(request: Request, db: AsyncSession = Depends(get_db)):
         from core.services.artist_lookup import ArtistLookupService
 
         artist_id = await ArtistLookupService.get_artist_id_by_user(user_id, db)
-        print(f"🔍 Artist ID: {artist_id}")
 
         if not artist_id:
             return error_response(404, "No tienes un perfil de artista creado")
 
         # Obtener álbumes con información completa
         albums = await service.get_artist_albums_with_info(artist_id)
-        print(f"🔍 Álbumes: {albums}")
 
         return success_response(
             {"artist_id": artist_id, "total_albums": len(albums), "albums": albums},
             "Mis álbumes recuperados correctamente",
         )
-    except Exception as e:
-        print(f"❌ Error en /my-albums: {str(e)}")
-        return error_response(500, f"Error al obtener mis álbumes: {str(e)}")
+    except Exception:
+        logger.exception("Error al obtener mis álbumes (user_id=%s)", user_id)
+        return error_response(500, "Error al obtener mis álbumes")
 
 
 @router.get("/artist/{artist_id}", response_model=dict)
@@ -68,8 +67,9 @@ async def get_artist_albums(artist_id: int, db: AsyncSession = Depends(get_db)):
             {"artist_id": artist_id, "total_albums": len(albums), "albums": albums},
             "Álbumes del artista recuperados correctamente",
         )
-    except Exception as e:
-        return error_response(500, f"Error al obtener álbumes: {str(e)}")
+    except Exception:
+        logger.exception("Error al obtener álbumes del artista %s", artist_id)
+        return error_response(500, "Error al obtener álbumes")
 
 
 # === Rutas con parámetro (más genéricas) después ===

@@ -11,6 +11,25 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Errores centinela para permitir el mapeo a códigos HTTP vía errors.Is
+// en vez de comparar strings de mensajes de error.
+// ErrUserNotFound se declara en auth_service.go (mismo paquete, mismo error
+// lógico reutilizado tanto en login como en operaciones sobre el usuario).
+var (
+	ErrInvalidBirthdate    = errors.New("fecha inválida, formato esperado YYYY-MM-DD")
+	ErrUserAlreadyExists   = errors.New("usuario o email ya registrados")
+	ErrPasswordHashing     = errors.New("no se pudo encriptar la contraseña")
+	ErrUsernameTaken       = errors.New("username ya está en uso")
+	ErrEmailTaken          = errors.New("email ya está en uso")
+	ErrInvalidEmailFormat  = errors.New("formato de email inválido")
+	ErrPasswordTooShort    = errors.New("la contraseña debe tener al menos 6 caracteres")
+	ErrInvalidBirthdateFmt = errors.New("fecha de nacimiento inválida, formato esperado YYYY-MM-DD")
+	ErrInvalidRole         = errors.New("rol inválido")
+	ErrUpdateFailed        = errors.New("no se pudo actualizar el usuario")
+	ErrUsernameCheckFailed = errors.New("error al verificar username")
+	ErrEmailCheckFailed    = errors.New("error al verificar email")
+)
+
 // RegisterRequest representa la solicitud para registrar un nuevo usuario.
 type RegisterRequest struct {
 	Username  string `json:"username" binding:"required,min=3,max=20"`
@@ -21,12 +40,12 @@ type RegisterRequest struct {
 
 // UpdateRequest representa la solicitud para actualizar la información de un usuario.
 type UpdateRequest struct {
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Name      string `json:"name"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
 	Birthdate string `json:"birthdate"`
-	Role string `json:"role"` // Agregado campo Role
+	Role      string `json:"role"` // Agregado campo Role
 }
 
 // UserResponse representa la respuesta con los datos básicos de un usuario.
@@ -82,17 +101,17 @@ func NewUserService(userRepo repositories.UserRepositoryInterface) UserServiceIn
 func (s *UserService) RegisterUser(req RegisterRequest) (*UserResponse, error) {
 	birthdate, err := time.Parse("2006-01-02", req.Birthdate)
 	if err != nil {
-		return nil, errors.New("fecha inválida, formato esperado YYYY-MM-DD")
+		return nil, ErrInvalidBirthdate
 	}
 
 	_, err = s.userRepo.FindByUsernameOrEmail(req.Username, req.Email)
 	if err == nil {
-		return nil, errors.New("usuario o email ya registrados")
+		return nil, ErrUserAlreadyExists
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, errors.New("no se pudo encriptar la contraseña")
+		return nil, ErrPasswordHashing
 	}
 
 	user := &models.User{
@@ -120,52 +139,52 @@ func (s *UserService) RegisterUser(req RegisterRequest) (*UserResponse, error) {
 
 // UpdateUser actualiza los datos de un usuario, validando duplicados y formato.
 func (s *UserService) UpdateUser(userID uint, req UpdateRequest) (*UserResponse, error) {
-    user, err := s.userRepo.FindByID(userID)
-    if err != nil {
-        return nil, errors.New("usuario no encontrado")
-    }
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
 
-    now := time.Now() // Obtener la hora actual una sola vez
-    var updatedFields []string
+	now := time.Now() // Obtener la hora actual una sola vez
+	var updatedFields []string
 
-    if req.Name != "" && req.Name != user.Name {
-        user.Name = req.Name
-    }
+	if req.Name != "" && req.Name != user.Name {
+		user.Name = req.Name
+	}
 
-    if req.Username != "" && req.Username != user.Username {
-        exists, err := s.userRepo.ExistsByUsername(req.Username)
-        if err != nil {
-            return nil, errors.New("error al verificar username")
-        }
-        if exists {
-            return nil, errors.New("username ya está en uso")
-        }
-        user.Username = req.Username
-        user.LastUsernameChange = &now // ✅ Actualizar timestamp
-        updatedFields = append(updatedFields, "username")
-    }
+	if req.Username != "" && req.Username != user.Username {
+		exists, err := s.userRepo.ExistsByUsername(req.Username)
+		if err != nil {
+			return nil, ErrUsernameCheckFailed
+		}
+		if exists {
+			return nil, ErrUsernameTaken
+		}
+		user.Username = req.Username
+		user.LastUsernameChange = &now // ✅ Actualizar timestamp
+		updatedFields = append(updatedFields, "username")
+	}
 
-    if req.Email != "" && req.Email != user.Email {
-        matched, _ := regexp.MatchString(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`, req.Email)
-        if !matched {
-            return nil, errors.New("formato de email inválido")
-        }
+	if req.Email != "" && req.Email != user.Email {
+		matched, _ := regexp.MatchString(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`, req.Email)
+		if !matched {
+			return nil, ErrInvalidEmailFormat
+		}
 
-        exists, err := s.userRepo.ExistsByEmail(req.Email)
-        if err != nil {
-            return nil, errors.New("error al verificar email")
-        }
-        if exists {
-            return nil, errors.New("email ya está en uso")
-        }
-        user.Email = req.Email
-        user.LastEmailChange = &now // ✅ Actualizar timestamp
-        updatedFields = append(updatedFields, "email")
-    }
+		exists, err := s.userRepo.ExistsByEmail(req.Email)
+		if err != nil {
+			return nil, ErrEmailCheckFailed
+		}
+		if exists {
+			return nil, ErrEmailTaken
+		}
+		user.Email = req.Email
+		user.LastEmailChange = &now // ✅ Actualizar timestamp
+		updatedFields = append(updatedFields, "email")
+	}
 
-    if req.Password != "" {
+	if req.Password != "" {
 		if len(req.Password) < 6 {
-			return nil, errors.New("la contraseña debe tener al menos 6 caracteres")
+			return nil, ErrPasswordTooShort
 		}
 
 		// Verificar si la nueva contraseña es diferente a la actual
@@ -173,7 +192,7 @@ func (s *UserService) UpdateUser(userID uint, req UpdateRequest) (*UserResponse,
 		if err != nil { // Si hay error, significa que son diferentes
 			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 			if err != nil {
-				return nil, errors.New("no se pudo encriptar la contraseña")
+				return nil, ErrPasswordHashing
 			}
 			user.Password = string(hashedPassword)
 			user.LastPasswordChange = &now
@@ -184,17 +203,17 @@ func (s *UserService) UpdateUser(userID uint, req UpdateRequest) (*UserResponse,
 		}
 	}
 
-    if req.Birthdate != "" {
-        birthdate, err := time.Parse("2006-01-02", req.Birthdate)
-        if err != nil {
-            return nil, errors.New("fecha de nacimiento inválida, formato esperado YYYY-MM-DD")
-        }
-        // Solo actualizar si es diferente
-        if !birthdate.Equal(user.Birthdate) {
-            user.Birthdate = birthdate
-            updatedFields = append(updatedFields, "birthdate")
-        }
-    }
+	if req.Birthdate != "" {
+		birthdate, err := time.Parse("2006-01-02", req.Birthdate)
+		if err != nil {
+			return nil, ErrInvalidBirthdateFmt
+		}
+		// Solo actualizar si es diferente
+		if !birthdate.Equal(user.Birthdate) {
+			user.Birthdate = birthdate
+			updatedFields = append(updatedFields, "birthdate")
+		}
+	}
 
 	if req.Role != "" && req.Role != user.Role {
 		// validar que el rol sea uno permitido
@@ -204,34 +223,34 @@ func (s *UserService) UpdateUser(userID uint, req UpdateRequest) (*UserResponse,
 			"admin":  true,
 		}
 		if !validRoles[req.Role] {
-			return nil, errors.New("rol inválido")
+			return nil, ErrInvalidRole
 		}
 		user.Role = req.Role
 		updatedFields = append(updatedFields, "role")
 	}
 
-    // Solo actualizar en la base de datos si hay cambios reales
-    if len(updatedFields) > 0 {
-        if err := s.userRepo.Update(user); err != nil {
-            return nil, errors.New("no se pudo actualizar el usuario")
-        }
-    }
+	// Solo actualizar en la base de datos si hay cambios reales
+	if len(updatedFields) > 0 {
+		if err := s.userRepo.Update(user); err != nil {
+			return nil, ErrUpdateFailed
+		}
+	}
 
-    return &UserResponse{
-        ID:        user.ID,
-        Name:      user.Name,
-        Username:  user.Username,
-        Email:     user.Email,
-        Role:      user.Role,
-        Birthdate: user.Birthdate.Format("2006-01-02"),
-    }, nil
+	return &UserResponse{
+		ID:        user.ID,
+		Name:      user.Name,
+		Username:  user.Username,
+		Email:     user.Email,
+		Role:      user.Role,
+		Birthdate: user.Birthdate.Format("2006-01-02"),
+	}, nil
 }
 
 // GetUserDetails devuelve los detalles completos de un usuario.
 func (s *UserService) GetUserDetails(userID uint) (*UserDetailResponse, error) {
 	user, err := s.userRepo.FindByID(userID)
 	if err != nil {
-		return nil, errors.New("usuario no encontrado")
+		return nil, ErrUserNotFound
 	}
 
 	return &UserDetailResponse{

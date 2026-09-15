@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"auth-service/services"
+	"auth-service/utils"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +21,7 @@ func UpdateUser(userService services.UserServiceInterface) gin.HandlerFunc {
 
 		var input services.UpdateRequest
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			utils.RespondError(c, http.StatusBadRequest, err, "datos de solicitud inválidos")
 			return
 		}
 
@@ -39,15 +41,23 @@ func UpdateUser(userService services.UserServiceInterface) gin.HandlerFunc {
 		user, err := userService.UpdateUser(userID, input)
 		if err != nil {
 			statusCode := http.StatusInternalServerError
+			publicMsg := "no se pudo actualizar el usuario"
 
-			switch err.Error() {
-			case "usuario no encontrado":
+			switch {
+			case errors.Is(err, services.ErrUserNotFound):
 				statusCode = http.StatusNotFound
-			case "username ya está en uso", "email ya está en uso", "formato de email inválido", "la contraseña debe tener al menos 6 caracteres":
+				publicMsg = err.Error()
+			case errors.Is(err, services.ErrUsernameTaken),
+				errors.Is(err, services.ErrEmailTaken),
+				errors.Is(err, services.ErrInvalidEmailFormat),
+				errors.Is(err, services.ErrPasswordTooShort),
+				errors.Is(err, services.ErrInvalidBirthdateFmt),
+				errors.Is(err, services.ErrInvalidRole):
 				statusCode = http.StatusBadRequest
+				publicMsg = err.Error()
 			}
 
-			c.JSON(statusCode, gin.H{"error": err.Error()})
+			utils.RespondError(c, statusCode, err, publicMsg)
 			return
 		}
 

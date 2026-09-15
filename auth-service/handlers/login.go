@@ -3,6 +3,8 @@ package handlers
 import (
 	"auth-service/config"
 	"auth-service/services"
+	"auth-service/utils"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,22 +16,22 @@ func Login(authService services.AuthServiceInterface) gin.HandlerFunc {
 		var input services.LoginRequest
 
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			utils.RespondError(c, http.StatusBadRequest, err, "datos de solicitud inválidos")
 			return
 		}
 
 		response, err := authService.Login(input)
 		if err != nil {
 			statusCode := http.StatusInternalServerError
+			publicMsg := "no se pudo iniciar sesión"
 
-			switch err.Error() {
-			case "usuario no encontrado", "contraseña incorrecta":
+			switch {
+			case errors.Is(err, services.ErrUserNotFound), errors.Is(err, services.ErrInvalidPassword):
 				statusCode = http.StatusUnauthorized
-			case "no se pudo generar access token", "no se pudo guardar refresh token", "error limpiando tokens anteriores":
-				statusCode = http.StatusInternalServerError
+				publicMsg = "credenciales inválidas"
 			}
 
-			c.JSON(statusCode, gin.H{"error": err.Error()})
+			utils.RespondError(c, statusCode, err, publicMsg)
 			return
 		}
 

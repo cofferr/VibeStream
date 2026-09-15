@@ -2,6 +2,9 @@ from pydantic_settings import (
     BaseSettings,
 )  # o from pydantic import BaseSettings si usas v1
 from pydantic import Field
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -28,7 +31,11 @@ class Settings(BaseSettings):
                 if isinstance(parsed, list):
                     return [str(x).strip() for x in parsed if x]
             except Exception:
-                pass
+                logger.warning(
+                    "FRONTEND_ORIGINS parece una lista JSON pero no pudo parsearse; "
+                    "se usará el parseo por comas como fallback: %r",
+                    raw,
+                )
         return [p.strip() for p in s.split(",") if p.strip()]
 
     class Config:

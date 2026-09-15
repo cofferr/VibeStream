@@ -3,9 +3,9 @@ package database
 import (
 	"database/sql"
 	"log"
-	"time"
 	"streaming-service/config"
 	"sync"
+	"time"
 
 	_ "github.com/lib/pq" // driver PostgreSQL
 )
@@ -25,8 +25,8 @@ func initDB() {
 	}
 
 	// Opcional: ajustar el pool de conexiones
-	conn.SetMaxOpenConns(15)  // 🔥 AUMENTADO para streaming
-	conn.SetMaxIdleConns(8)   // 🔥 AUMENTADO
+	conn.SetMaxOpenConns(15) // 🔥 AUMENTADO para streaming
+	conn.SetMaxIdleConns(8)  // 🔥 AUMENTADO
 	conn.SetConnMaxLifetime(30 * time.Minute)
 
 	db = conn

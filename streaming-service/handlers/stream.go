@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"streaming-service/aws"
@@ -64,7 +65,7 @@ func StreamSongHandler(songService services.SongService) gin.HandlerFunc {
 		// Obtener la S3 key de la canción
 		s3Key, err := songService.GetSongURL(uint(id))
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "canción no encontrada: " + err.Error()})
+			utils.RespondError(c, http.StatusNotFound, err, "canción no encontrada")
 			return
 		}
 
@@ -74,7 +75,7 @@ func StreamSongHandler(songService services.SongService) gin.HandlerFunc {
 			Key:    &s3Key,
 		})
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "archivo de audio no encontrado en S3: " + err.Error()})
+			utils.RespondError(c, http.StatusNotFound, err, "archivo de audio no disponible")
 			return
 		}
 
@@ -97,14 +98,14 @@ func StreamSongHandler(songService services.SongService) gin.HandlerFunc {
 				Key:    &s3Key,
 			})
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "error al obtener archivo de S3: " + err.Error()})
+				log.Printf("❌ error al obtener archivo de S3: %v", err)
 				return
 			}
 			defer getOutput.Body.Close()
 
 			_, err = io.Copy(c.Writer, getOutput.Body)
 			if err != nil {
-				fmt.Printf("❌ Error enviando archivo completo: %v\n", err)
+				log.Printf("❌ Error enviando archivo completo: %v", err)
 			}
 			return
 		}
@@ -128,7 +129,7 @@ func StreamSongHandler(songService services.SongService) gin.HandlerFunc {
 			Range:  &rangeRequest,
 		})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error al obtener rango de S3: " + err.Error()})
+			log.Printf("❌ error al obtener rango de S3: %v", err)
 			return
 		}
 		defer getOutput.Body.Close()
@@ -147,7 +148,7 @@ func StreamSongHandler(songService services.SongService) gin.HandlerFunc {
 			if n > 0 {
 				_, writeErr := c.Writer.Write(buf[:n])
 				if writeErr != nil {
-					fmt.Printf("❌ Error escribiendo chunk: %v\n", writeErr)
+					log.Printf("❌ Error escribiendo chunk: %v", writeErr)
 					break
 				}
 				sent += int64(n)
@@ -160,7 +161,7 @@ func StreamSongHandler(songService services.SongService) gin.HandlerFunc {
 
 			if err != nil {
 				if err != io.EOF {
-					fmt.Printf("❌ Error leyendo desde S3: %v\n", err)
+					log.Printf("❌ Error leyendo desde S3: %v", err)
 				}
 				break
 			}

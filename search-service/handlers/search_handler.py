@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from services.search_service import SearchService
 from strategies.fuzzy_strategy import FuzzySearchStrategy
 from database.connection import get_db  # Tu función que devuelve AsyncSession
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -35,9 +38,9 @@ async def search(
         )
 
         return result
-        
+
     except Exception as e:
-        print(f"❌ Error en endpoint de búsqueda: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+        logger.exception("Error en endpoint de búsqueda (query=%r)", q)
+        raise HTTPException(
+            status_code=500, detail="Error interno del servidor"
+        ) from e

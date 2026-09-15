@@ -13,6 +13,16 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Errores centinela para permitir el mapeo a códigos HTTP vía errors.Is
+// en vez de comparar strings de mensajes de error.
+var (
+	ErrUserNotFound        = errors.New("usuario no encontrado")
+	ErrInvalidPassword     = errors.New("contraseña incorrecta")
+	ErrTokenGeneration     = errors.New("no se pudo generar access token")
+	ErrRefreshTokenSave    = errors.New("no se pudo guardar refresh token")
+	ErrRefreshTokenInvalid = errors.New("no se pudo renovar el token")
+)
+
 // RefreshRequest representa la solicitud para renovar un token de acceso.
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
@@ -61,16 +71,16 @@ func (s *AuthService) RefreshToken(req RefreshRequest) (*RefreshResponse, error)
 
 	stored, err := s.refreshTokenRepo.FindByToken(req.RefreshToken)
 	if err != nil {
-		return nil, errors.New("no se pudo renovar el token")
+		return nil, ErrRefreshTokenInvalid
 	}
 
 	if now.After(stored.ExpiresAt) {
-		return nil, errors.New("no se pudo renovar el token")
+		return nil, ErrRefreshTokenInvalid
 	}
 
 	user, err := s.userRepo.FindByID(stored.UserID)
 	if err != nil {
-		return nil, errors.New("no se pudo renovar el token")
+		return nil, ErrRefreshTokenInvalid
 	}
 
 	cfg := config.AppConfig
@@ -86,7 +96,7 @@ func (s *AuthService) RefreshToken(req RefreshRequest) (*RefreshResponse, error)
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	accessTokenString, err := accessToken.SignedString([]byte(cfg.JWTSecret))
 	if err != nil {
-		return nil, errors.New("no se pudo generar access token")
+		return nil, ErrTokenGeneration
 	}
 
 	if stored.ExpiresAt.Sub(now) < cfg.RefreshTokenTTL/5 {
@@ -139,11 +149,11 @@ type UserSummary struct {
 func (s *AuthService) Login(req LoginRequest) (*LoginResponse, error) {
 	user, err := s.userRepo.FindByUsernameOrEmail(req.Identifier, req.Identifier)
 	if err != nil {
-		return nil, errors.New("usuario no encontrado")
+		return nil, ErrUserNotFound
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		return nil, errors.New("contraseña incorrecta")
+		return nil, ErrInvalidPassword
 	}
 
 	cfg := config.AppConfig
@@ -159,7 +169,7 @@ func (s *AuthService) Login(req LoginRequest) (*LoginResponse, error) {
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	accessTokenString, err := accessToken.SignedString([]byte(cfg.JWTSecret))
 	if err != nil {
-		return nil, errors.New("no se pudo generar access token")
+		return nil, ErrTokenGeneration
 	}
 
 	refreshToken := uuid.New().String()
@@ -174,7 +184,7 @@ func (s *AuthService) Login(req LoginRequest) (*LoginResponse, error) {
 	}
 
 	if err := s.refreshTokenRepo.Create(newRT); err != nil {
-		return nil, errors.New("no se pudo guardar refresh token")
+		return nil, ErrRefreshTokenSave
 	}
 
 	return &LoginResponse{

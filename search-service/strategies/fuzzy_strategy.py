@@ -1,4 +1,5 @@
 # strategies/fuzzy_strategy.py
+import logging
 from rapidfuzz import fuzz
 from typing import List, Tuple
 from strategies.base_strategy import SearchStrategy
@@ -6,6 +7,9 @@ from repositories.song_repository import SongRepository
 from repositories.album_repository import AlbumRepository
 from repositories.artist_repository import ArtistRepository
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
 
 class FuzzySearchStrategy(SearchStrategy):
     def __init__(self, threshold: int = 70):
@@ -26,8 +30,12 @@ class FuzzySearchStrategy(SearchStrategy):
                     )
                     if similarity >= self.threshold:
                         filtered.append((obj, similarity))
-            except Exception as e:
-                print(f"Error filtrando objeto: {e}")
+            except Exception:
+                logger.exception(
+                    "Error filtrando objeto %s por campo %r",
+                    getattr(obj, "id", "unknown"),
+                    field_name,
+                )
                 continue
 
         # Ordenar por similitud (mayor a menor) y retornar solo los objetos
@@ -47,34 +55,17 @@ class FuzzySearchStrategy(SearchStrategy):
         album_repo = AlbumRepository(session)
         artist_repo = ArtistRepository(session)
 
-        try:
-            print(f"🎵 Buscando canciones con: '{query}'")
-            songs = await song_repo.get_by_title_ilike(query, limit * 3, offset_songs)
-            print(f"🎵 Canciones encontradas: {len(songs)}")
+        songs = await song_repo.get_by_title_ilike(query, limit * 3, offset_songs)
+        albums = await album_repo.get_by_title_ilike(query, limit * 3, offset_albums)
+        artists = await artist_repo.search_by_name(query, limit * 3, offset_artists)
 
-            print(f"📀 Buscando álbumes con: '{query}'")
-            albums = await album_repo.get_by_title_ilike(query, limit * 3, offset_albums)
-            print(f"📀 Álbumes encontrados: {len(albums)}")
+        # Filtrar usando fuzzy matching sobre los objetos
+        filtered_songs = await self._filter_objects(songs, query, "title")
+        filtered_albums = await self._filter_objects(albums, query, "title")
+        filtered_artists = await self._filter_objects(artists, query, "artist_name")
 
-            print(f"👤 Buscando artistas con: '{query}'")
-            artists = await artist_repo.search_by_name(query, limit * 3, offset_artists)
-            print(f"👤 Artistas encontrados: {len(artists)}")
-
-            # Filtrar usando fuzzy matching sobre los objetos
-            filtered_songs = await self._filter_objects(songs, query, "title")
-            filtered_albums = await self._filter_objects(albums, query, "title")
-            filtered_artists = await self._filter_objects(artists, query, "artist_name")
-
-            print(f"🎯 Resultados después de filtro fuzzy: {len(filtered_songs)} canciones, {len(filtered_albums)} álbumes, {len(filtered_artists)} artistas")
-
-            return (
-                filtered_songs[:limit],
-                filtered_albums[:limit],
-                filtered_artists[:limit],
-            )
-
-        except Exception as e:
-            print(f"❌ Error en búsqueda fuzzy: {e}")
-            import traceback
-            traceback.print_exc()
-            return [], [], []
+        return (
+            filtered_songs[:limit],
+            filtered_albums[:limit],
+            filtered_artists[:limit],
+        )

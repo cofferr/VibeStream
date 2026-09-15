@@ -52,11 +52,11 @@ async def register_artist(
     if social_links:
         try:
             links_dict = json.loads(social_links)
-        except Exception:
+        except Exception as e:
             raise HTTPException(
                 status_code=400,
                 detail=error_response(400, "Formato inválido en social_links"),
-            )
+            ) from e
 
     payload = ArtistCreateSchema(
         artist_name=artist_name,
@@ -113,11 +113,11 @@ async def update_my_artist(
     if social_links:
         try:
             links_dict = json.loads(social_links)
-        except Exception:
+        except Exception as e:
             raise HTTPException(
                 status_code=400,
                 detail=error_response(400, "Formato inválido en social_links"),
-            )
+            ) from e
 
     # 🔧 payload siempre definido
     payload = ArtistUpdateSchema(

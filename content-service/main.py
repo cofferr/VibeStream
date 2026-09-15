@@ -1,11 +1,15 @@
 from config import settings
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from core.handlers.album_handler import router as album_router
 from core.handlers.song_handler import router as song_router
 from middleware.auth_middleware import AuthMiddleware
 import asyncio
+import logging
 from contextlib import asynccontextmanager
+
+logger = logging.getLogger(__name__)
 
 try:
     from events.consumer import consume_events
@@ -62,6 +66,21 @@ app.include_router(song_router)
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+# Manejo global de excepciones para asegurar headers CORS
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Error no manejado en %s %s", request.method, request.url.path)
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:5173",
+            "Access-Control-Allow-Credentials": "true",
+        },
+    )
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 		// Extraer claims y guardarlos en el contexto
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			c.Set("user", claims)
-			
+
 			// Manejar diferentes tipos de user_id
 			if uid, exists := claims["user_id"]; exists {
 				switch v := uid.(type) {
@@ -59,7 +59,7 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 					return
 				}
 			}
-			
+
 			if role, exists := claims["role"]; exists {
 				c.Set("role", role)
 			}

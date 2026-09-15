@@ -6,7 +6,9 @@ from handlers.artist_handler import router as artist_router
 from middleware.auth_middleware import AuthMiddleware
 from config import settings
 import uvicorn
-import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Artist Service", version="0.1")
 
@@ -39,9 +41,7 @@ def health_check():
 # Manejo global de excepciones para asegurar headers CORS
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    error_detail = str(exc)
-    print(f"Global error handler: {error_detail}")
-    traceback.print_exc()
+    logger.exception("Error no manejado en %s %s", request.method, request.url.path)
 
     return JSONResponse(
         status_code=500,

@@ -3,6 +3,7 @@ package handlers
 import (
 	"auth-service/config"
 	"auth-service/services"
+	"auth-service/utils"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +25,7 @@ func Refresh(authService services.AuthServiceInterface) gin.HandlerFunc {
 
 		response, err := authService.RefreshToken(input)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			utils.RespondError(c, http.StatusUnauthorized, err, "no se pudo renovar el token")
 			return
 		}
 

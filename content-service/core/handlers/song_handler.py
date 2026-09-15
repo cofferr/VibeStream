@@ -1,11 +1,12 @@
 # song_handler.py
 from fastapi import APIRouter, Depends, Request, File, UploadFile, Form, HTTPException
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.db.connection import get_db
 from core.repositories.song_repository import SongRepository
 from core.repositories.album_repository import AlbumRepository
 from core.services.song_service import SongService
-from core.entities.song import SongOut
+from core.entities.song import SongOut, SongCreateFormData
 from utils.json_response import success_response, error_response
 from typing import Optional
 from utils.audio_validation import validate_audio_file
@@ -31,13 +32,7 @@ async def create_song(
 ):
     user_id = request.state.user["user_id"]
 
-    # 🔹 NUEVA VALIDACIÓN: Verificar que el álbum pertenezca al usuario
-    await validate_album_ownership(AlbumRepository(db), album_id, user_id, db)
-
-    # 🔹 Validar archivo de audio
-    validate_audio_file(audio_file)
-
-    # 🔹 Procesar artist_ids si se proporcionan
+    # 🔹 Procesar artist_ids (lista separada por comas) antes de validar
     parsed_artist_ids = None
     if artist_ids:
         try:
@@ -50,13 +45,32 @@ async def create_song(
                 detail="artist_ids debe ser una lista de números separados por comas",
             )
 
+    # 🔹 Validar los campos de metadata con Pydantic (el archivo en sí se
+    # valida aparte porque FastAPI no permite mezclar UploadFile con un
+    # body Pydantic en el mismo endpoint multipart)
+    try:
+        form_data = SongCreateFormData(
+            title=title,
+            album_id=album_id,
+            track_number=track_number,
+            genre_id=genre_id,
+            artist_ids=parsed_artist_ids,
+            override_duration=override_duration,
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors()) from e
+
+    # 🔹 NUEVA VALIDACIÓN: Verificar que el álbum pertenezca al usuario
+    await validate_album_ownership(AlbumRepository(db), form_data.album_id, user_id, db)
+
+    # 🔹 Validar archivo de audio
+    validate_audio_file(audio_file)
+
     # 🔹 Obtener información del álbum (ya validado que pertenece al usuario)
     album_repo = AlbumRepository(db)
-    album = await album_repo.get_by_id(album_id)
+    album = await album_repo.get_by_id(form_data.album_id)
     if not album:
         raise HTTPException(status_code=404, detail="Álbum no encontrado")
-
-    album_name = album.title  # (podría usarse para almacenamiento físico en carpeta)
 
     # 🔹 Leer datos del archivo de audio
     audio_data = await audio_file.read()
@@ -71,16 +85,16 @@ async def create_song(
 
     service = SongService(SongRepository(db))
     song = await service.create_song(
-        title=title,
-        album_id=album_id,
+        title=form_data.title,
+        album_id=form_data.album_id,
         user_id=user_id,
         audio_file=audio_data,
         audio_filename=audio_file.filename or "unknown.mp3",
         db=db,
-        artist_ids=parsed_artist_ids,
-        track_number=track_number,
-        genre_id=genre_id,
-        override_duration=override_duration,
+        artist_ids=form_data.artist_ids,
+        track_number=form_data.track_number,
+        genre_id=form_data.genre_id,
+        override_duration=form_data.override_duration,
     )
 
     schema = SongOut.model_validate(song)
