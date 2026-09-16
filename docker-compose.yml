@@ -3,12 +3,17 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      # Fase 6: antes hardcodeado a guest/guest. Si se cambia acá,
+      # también hay que actualizar RABBITMQ_URL en .env para que
+      # coincida (docker-compose no permite variables derivadas de
+      # otras variables dentro del mismo .env).
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 5s
@@ -25,6 +30,7 @@ services:
         - SERVICE_NAME=artist-service
         - SERVICE_PORT=${ARTIST_PORT:-8002}
     container_name: artist-service
+    restart: unless-stopped
     ports:
       - "${ARTIST_PORT:-8002}:${ARTIST_PORT:-8002}"
     env_file: .env
@@ -42,6 +48,7 @@ services:
         - SERVICE_NAME=content-service
         - SERVICE_PORT=${CONTENT_PORT:-8001}
     container_name: content-service
+    restart: unless-stopped
     ports:
       - "${CONTENT_PORT:-8001}:${CONTENT_PORT:-8001}"
     env_file: .env
@@ -59,6 +66,7 @@ services:
         - SERVICE_NAME=playlist-service
         - SERVICE_PORT=${PLAYLIST_PORT:-8004}
     container_name: playlist-service
+    restart: unless-stopped
     ports:
       - "${PLAYLIST_PORT:-8004}:${PLAYLIST_PORT:-8004}"
     env_file: .env
@@ -76,6 +84,7 @@ services:
         - SERVICE_NAME=search-service
         - SERVICE_PORT=${SEARCH_PORT:-8006}
     container_name: search-service
+    restart: unless-stopped
     ports:
       - "${SEARCH_PORT:-8006}:${SEARCH_PORT:-8006}"
     env_file: .env
@@ -93,6 +102,7 @@ services:
         - SERVICE_NAME=subscription-service
         - SERVICE_PORT=${SUBSCRIPTION_PORT:-8007}
     container_name: subscription-service
+    restart: unless-stopped
     ports:
       - "${SUBSCRIPTION_PORT:-8007}:${SUBSCRIPTION_PORT:-8007}"
     env_file: .env
@@ -110,6 +120,7 @@ services:
         - SERVICE_NAME=auth-service
         - SERVICE_PORT=${AUTH_PORT:-8080}
     container_name: auth-service
+    restart: unless-stopped
     ports:
       - "${AUTH_PORT:-8080}:${AUTH_PORT:-8080}"
     env_file: .env
@@ -127,6 +138,7 @@ services:
         - SERVICE_NAME=history-service
         - SERVICE_PORT=${HISTORY_PORT:-8005}
     container_name: history-service
+    restart: unless-stopped
     ports:
       - "${HISTORY_PORT:-8005}:${HISTORY_PORT:-8005}"
     env_file: .env
@@ -144,6 +156,7 @@ services:
         - SERVICE_NAME=streaming-service
         - SERVICE_PORT=${STREAMING_PORT:-8003}
     container_name: streaming-service
+    restart: unless-stopped
     ports:
       - "${STREAMING_PORT:-8003}:${STREAMING_PORT:-8003}"
     env_file: .env
@@ -157,6 +170,7 @@ services:
     build:
       context: ./front_music_stm
     container_name: front_music_stm
+    restart: unless-stopped
     ports:
       - "5173:80"
     depends_on:

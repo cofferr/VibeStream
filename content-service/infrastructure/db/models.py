@@ -1,7 +1,6 @@
 import datetime
 
 from sqlalchemy import (
-    JSON,
     Column,
     Date,
     DateTime,
@@ -24,71 +23,35 @@ class Base(DeclarativeBase):
     pass
 
 
-# Tabla de asociación many-to-many entre songs y artists
-# 🔧 Se ha añadido el argumento de esquema
+# Tabla de asociación many-to-many entre songs y artists. artist_id NO
+# tiene FK física a music_streaming.artists (Fase 6): esa tabla es de
+# artist-service, no de content-service, y una FK física cross-schema es
+# justo lo que Fase 3 buscaba eliminar. Se valida la existencia del
+# artista vía HTTP en SongService.create_song antes de insertar acá.
 song_artists_table = Table(
     "song_artists",
     Base.metadata,
     Column(
         "song_id",
         Integer,
-        # 🔧 Se ha actualizado la clave foránea para incluir el esquema
         ForeignKey("music_streaming.songs.id", ondelete="CASCADE"),
         primary_key=True,
     ),
-    Column(
-        "artist_id",
-        Integer,
-        # 🔧 Se ha actualizado la clave foránea para incluir el esquema
-        ForeignKey("music_streaming.artists.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
+    Column("artist_id", Integer, primary_key=True),
     Index("ix_song_artists_song_id_artist_id", "song_id", "artist_id", unique=True),
-    # 🔧 Se ha añadido el esquema a la tabla
     schema="music_streaming",
 )
 
 
-class Artist(Base):
-    __tablename__ = "artists"
-    # 🔧 Se ha añadido el argumento de esquema
-    __table_args__ = {"schema": "music_streaming"}
-
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(unique=True, index=True)
-    artist_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    bio: Mapped[str | None] = mapped_column(Text)
-    profile_pic: Mapped[str | None] = mapped_column(String)
-    social_links: Mapped[dict | None] = mapped_column(JSON)
-
-    created_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
-    )
-    updated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
-    )
-
-    albums: Mapped[list["Album"]] = relationship(back_populates="artist", lazy="select")
-    songs: Mapped[list["Song"]] = relationship(
-        secondary=song_artists_table, back_populates="artists", lazy="select"
-    )
-
-    def __repr__(self) -> str:
-        return f"<Artist id={self.id} user_id={self.user_id}>"
-
-
 class Album(Base):
     __tablename__ = "albums"
-    # 🔧 Se ha añadido el argumento de esquema
     __table_args__ = {"schema": "music_streaming"}
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    artist_id: Mapped[int] = mapped_column(
-        # 🔧 Se ha actualizado la clave foránea para incluir el esquema
-        ForeignKey("music_streaming.artists.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    # Sin FK física a music_streaming.artists (Fase 6, mismo razonamiento
+    # que song_artists_table de arriba). Se resuelve/valida vía HTTP a
+    # artist-service (ArtistLookupService) antes de crear el álbum.
+    artist_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String, nullable=False, index=True)
     release_date: Mapped[datetime.date | None] = mapped_column(Date)
 
@@ -100,7 +63,6 @@ class Album(Base):
         DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
     )
 
-    artist: Mapped["Artist"] = relationship(back_populates="albums", lazy="joined")
     songs: Mapped[list["Song"]] = relationship(
         back_populates="album", cascade="all, delete-orphan", lazy="select"
     )
@@ -111,7 +73,6 @@ class Album(Base):
 
 class Genre(Base):
     __tablename__ = "genres"
-    # 🔧 Se ha añadido el argumento de esquema
     __table_args__ = {"schema": "music_streaming"}
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -126,18 +87,15 @@ class Genre(Base):
 
 class Song(Base):
     __tablename__ = "songs"
-    # 🔧 Se ha añadido el argumento de esquema
     __table_args__ = {"schema": "music_streaming"}
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     album_id: Mapped[int] = mapped_column(
-        # 🔧 Se ha actualizado la clave foránea para incluir el esquema
         ForeignKey("music_streaming.albums.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     genre_id: Mapped[int] = mapped_column(
-        # 🔧 Se ha actualizado la clave foránea para incluir el esquema
         ForeignKey("music_streaming.genres.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -156,9 +114,6 @@ class Song(Base):
 
     album: Mapped["Album"] = relationship(back_populates="songs", lazy="joined")
     genre: Mapped["Genre"] = relationship(back_populates="songs", lazy="joined")
-    artists: Mapped[list["Artist"]] = relationship(
-        secondary=song_artists_table, back_populates="songs", lazy="select"
-    )
 
     def __repr__(self) -> str:
         return f"<Song id={self.id} title={self.title} album_id={self.album_id}>"

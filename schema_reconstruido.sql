@@ -1,7 +1,22 @@
 -- ============================================================================
 -- VibeStream — Reconstrucción del schema Postgres a partir del código fuente
 -- ============================================================================
--- Generado leyendo los modelos ORM reales de cada microservicio, ya que
+-- ESTADO (Fase 6): este archivo dejó de ser el mecanismo de restauración
+-- manual del schema. content-service y artist-service ahora versionan su
+-- schema con Alembic (ver <servicio>/migrations/versions/0001_initial_schema.py,
+-- que transcribe las tablas de esos dos servicios de este archivo — sin la
+-- FK física a artists que content-service tenía acá, eliminada en la
+-- misma fase junto con el join local que la justificaba). auth-service
+-- (Go, sin ORM con auto-migración) usa SQL versionado a mano en
+-- auth-service/migrations/0001_init_users_and_refresh_tokens.sql, también
+-- transcrito de acá. history-service y streaming-service no tienen
+-- tooling de migración propio: solo consumen schema de otros servicios,
+-- decisión explícita (ver PLAN.md, Fase 6). Las tablas de
+-- subscription-service, playlist-service y search-service que siguen
+-- abajo no tienen migraciones formales todavía — este archivo sigue
+-- siendo su única fuente de verdad hasta que se les agregue Alembic.
+--
+-- Generado originalmente leyendo los modelos ORM reales de cada microservicio, ya que
 -- NINGÚN servicio hace auto-migración (no hay AutoMigrate en Go ni
 -- create_all()/Alembic en Python). El schema vivía solo en la base de datos
 -- perdida, nunca versionado como código.
@@ -100,9 +115,13 @@ CREATE INDEX ix_artists_artist_name ON music_streaming.artists(artist_name);
 
 -- ============================================================================
 -- CATÁLOGO DE CONTENIDO (content-service es el único dueño/escritor)
--- artists.id se referencia como FK física aquí porque content-service SÍ
--- mantiene su propia copia de lectura de Artist (join local para
--- enriquecer álbumes/canciones); no es el dueño de esa tabla, solo la lee.
+-- artist_id en albums/song_artists ya NO tiene FK física a artists
+-- (Fase 6): content-service dejó de mantener su copia local de Artist
+-- (join eliminado, resolvía título/nombre de artista en
+-- SongEnrichedOut/get_artist_albums_with_info) y ahora resuelve/valida
+-- artistas vía HTTP a artist-service (ver
+-- content-service/core/services/artist_lookup.py). Antes de Fase 6 esta
+-- FK era física porque ese join local la necesitaba; ya no aplica.
 -- ============================================================================
 
 CREATE TABLE music_streaming.genres (
@@ -114,7 +133,7 @@ CREATE INDEX ix_genres_name ON music_streaming.genres(name);
 
 CREATE TABLE music_streaming.albums (
     id            SERIAL PRIMARY KEY,
-    artist_id     INTEGER NOT NULL REFERENCES music_streaming.artists(id) ON DELETE CASCADE,
+    artist_id     INTEGER NOT NULL,  -- lógica, no física (ver nota arriba)
     title         VARCHAR NOT NULL,
     release_date  DATE,
     cover_url     TEXT,
@@ -141,7 +160,7 @@ CREATE INDEX ix_songs_title ON music_streaming.songs(title);
 
 CREATE TABLE music_streaming.song_artists (
     song_id    INTEGER NOT NULL REFERENCES music_streaming.songs(id) ON DELETE CASCADE,
-    artist_id  INTEGER NOT NULL REFERENCES music_streaming.artists(id) ON DELETE CASCADE,
+    artist_id  INTEGER NOT NULL,  -- lógica, no física (ver nota arriba)
     PRIMARY KEY (song_id, artist_id)
 );
 CREATE UNIQUE INDEX ix_song_artists_song_id_artist_id

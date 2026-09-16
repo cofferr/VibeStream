@@ -208,7 +208,13 @@ class AlbumService:
         """Obtiene todos los álbumes de un artista con información completa"""
         albums = await self.repo.get_albums_with_artist_info(artist_id)
 
+        # Todos los álbumes del lote comparten el mismo artist_id: una
+        # sola llamada HTTP a artist-service alcanza (Fase 6, antes era
+        # un join local a una copia duplicada de Artist).
+        artist_name = await ArtistLookupService.get_artist_name(artist_id)
+
         for album in albums:
+            album["artist_name"] = artist_name
             songs = await self.repo.list_songs_by_album(album["id"])
             album["total_songs"] = len(songs)
 

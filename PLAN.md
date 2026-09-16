@@ -283,6 +283,52 @@ Implementada originalmente en una máquina sin Docker disponible (validada solo 
 - `grep -n "guest" docker-compose.yml` → sin resultados.
 - `alembic upgrade head` contra un Postgres limpio reproduce el schema de `schema_reconstruido.sql` para las tablas ya migradas.
 
+### ✅ Estado: implementada y verificada con Docker (2026-09-16)
+
+**Cambio de alcance decidido con el usuario durante la implementación:**
+
+Preparando las migraciones de Alembic se encontró que **`content-service` todavía declaraba su propio modelo ORM `Artist` y hacía un join local a `artists`** para enriquecer canciones/álbumes (`song_repository.py`, `album_repository.py`) — contradiciendo la decisión de Fase 3 ("content-service deja de declarar su propio modelo Artist y la consulta vía HTTP") que el PLAN.md daba por implementada, aunque `schema_reconstruido.sql` ya documentaba esto como excepción conocida. El usuario decidió corregirlo dentro de esta fase en vez de diferirlo:
+
+- **Nuevo endpoint `GET /artists/by-user/{user_id}`** en artist-service (público, mismo patrón que `GET /artists/{id}`) — content-service no tenía forma de resolver "artist_id del usuario autenticado" vía HTTP porque ese endpoint no existía.
+- **`content-service/core/services/artist_lookup.py`** reescrito para llamar a artist-service vía `InternalHTTPClient` en vez de hacer `select(Artist.id)` local. Se mantuvo la firma `get_artist_id_by_user(user_id, db)` sin tocar sus ~7 call sites, aunque `db` ya no se use — documentado explícitamente en el docstring.
+- **`content-service/infrastructure/db/models.py`** — eliminada la clase `Artist` completa; `Album.artist_id` y `song_artists.artist_id` dejan de tener FK física a `artists.id` (ya no había justificación para esa FK cross-servicio una vez removido el join que la necesitaba) y se validan vía HTTP en su lugar.
+- **`SongEnrichedOut.from_song`** (`core/entities/song.py`) pasa a recibir `artist_name` ya resuelto (por el caller, vía el nuevo `ArtistLookupService.get_artist_name`) en vez de leerlo de una relación ORM local. Se eliminó el fallback a `song.artists[0]` (comprobado como código muerto en la práctica: todo song tiene `album_id`, y `album.artist_id` era ya la fuente preferida).
+- **`AlbumRepository.get_albums_with_artist_info`** dejó de hacer `JOIN Artist`; `AlbumService.get_artist_albums_with_info` resuelve el `artist_name` con **una sola llamada HTTP** para todo el lote (todos los álbumes devueltos comparten el mismo `artist_id`), no N llamadas.
+- **`SongRepository.list_by_artist`** se eliminó: dependía de la relación ORM `Song.artists` y `grep` confirmó que no lo llamaba nadie (código muerto real, no solo sospechado).
+- **`SongRepository.add_artists`** (nuevo) inserta filas en `song_artists` directamente vía `insert()` de SQLAlchemy Core, reemplazando `song.artists.append(artist)` (que dependía de la relación ORM al `Artist` local eliminado).
+
+Verificado con datos reales contra el stack Docker: registrar artista → álbum "Sencillos" → insertar canción → `GET /songs/{id}/enriched` y `GET /songs/batch` devuelven `artist_name` correcto vía HTTP → `GET /albums/my-albums` resuelve `artist_id` del usuario autenticado vía HTTP y `artist_name` del álbum vía HTTP → `PUT /albums/{id}` (ownership) acepta al dueño real y devuelve 403 a un usuario sin perfil de artista.
+
+**Resto de la fase, según el texto original:**
+
+1. **Dockerfiles Python reescritos a multi-stage real**: etapa `builder` con `build-essential` + un `venv` en `/opt/venv`; etapa `runtime` (`python:3.12.3-slim` limpio) copia solo el `venv` completo, sin arrastrar el compilador. Usuario no-root (`appuser`) vía `adduser --disabled-password --gecos ""`. Confirmado: `docker exec content-service whoami` → `appuser`.
+
+2. **`/health` agregado a `auth-service` y `history-service`** (Go) — en `history-service` tuvo que registrarse *antes* de `r.Use(middleware.AuthMiddleware(...))` (que se aplica globalmente a todo lo registrado después), o habría quedado detrás de JWT como cualquier otra ruta.
+
+3. **`HEALTHCHECK` en los 9 Dockerfiles.** Bug real encontrado al verificar: el healthcheck del frontend (`wget http://localhost/`) fallaba con "Connection refused" a pesar de que nginx sí estaba corriendo — `localhost` dentro del contenedor Alpine resuelve a `::1` (IPv6) primero y nginx solo escucha IPv4 (`listen 80;` sin `listen [::]:80;`). Corregido apuntando el healthcheck a `127.0.0.1` explícito. Los 9 servicios (+ RabbitMQ) muestran `healthy` en `docker compose ps`.
+
+4. **`.dockerignore` por servicio**: dado que el build context de los 8 backends es la raíz del repo (`context: .` en `docker-compose.yml`, para poder copiar `shared-python`/`shared-go`), un `.dockerignore` único en la raíz no puede ser específico por servicio. Se usó el soporte de BuildKit para `<Dockerfile>.dockerignore` (uno junto a cada `Dockerfile`, con paths relativos al build context) — no mencionado en el texto original del plan, pero es la única forma de lograr "un `.dockerignore` por servicio" dado que todos comparten build context.
+
+5. **`docker-compose.yml`**: `RABBITMQ_DEFAULT_USER/PASS` ahora leen `${RABBITMQ_USER}`/`${RABBITMQ_PASS}` de `.env` (default `guest`/`guest`, documentado en `.env.example` que hay que mantenerlos sincronizados con `RABBITMQ_URL` a mano — docker-compose no soporta variables derivadas de otras variables dentro de un mismo `.env`). `restart: unless-stopped` en los 9 servicios. Verificado en vivo: al reiniciar sin querer el Postgres de verificación durante esta sesión, `auth-service`/`history-service`/`streaming-service` (que fallan rápido si no hay DB al arrancar) se reiniciaron solos 6 veces hasta que la BD volvió a estar disponible, y luego quedaron estables — la política demostró su propósito real, no solo en teoría.
+
+6. **Alembic para `content-service` y `artist-service`**, template async (`alembic init -t async`), con `settings.db_url` como única fuente de verdad para la URL de conexión (no duplicada en `alembic.ini`) y `alembic_version` dejada en el schema `public` a propósito (si viviera en `music_streaming`, Alembic necesitaría que ese schema ya existiera para crear su propia tabla de control, antes de correr la migración que lo crea). La migración inicial de cada servicio se probó de verdad contra un Postgres recién creado (no el de verificación, que ya tenía las tablas de `schema_reconstruido.sql`) — `alembic upgrade head` reprodujo el schema esperado en ambos, confirmado con `\d` contra la tabla real.
+
+7. **auth-service (Go): SQL crudo versionado**, no Alembic con modelo espejo — decisión explícita, no ambigua. Introducir Alembic (Python) para un servicio Go habría significado mantener modelos SQLAlchemy sin ningún propósito en runtime, solo para tener algo que versionar; un archivo `.sql` numerado (`auth-service/migrations/0001_init_users_and_refresh_tokens.sql`) aplicado con `psql -f` es más simple y honesto sobre lo que realmente hace. Documentado explícitamente en el propio archivo el límite de este enfoque (no hay tabla de control tipo `alembic_version`) y cuándo migrar a `golang-migrate` si el número de migraciones crece. Verificado contra un Postgres limpio.
+
+8. **`history-service`/`streaming-service` no tienen tooling de migración propio** — decisión explícita documentada en el encabezado actualizado de `schema_reconstruido.sql`: ambos solo consumen schema de otros servicios (`songs`, `play_history` inferida de SQL crudo sin modelo propio), no tienen tablas que gestionar.
+
+9. **`schema_reconstruido.sql` actualizado** para reflejar su nuevo rol (punto de partida ya consumido por las migraciones, no mecanismo de restauración) y corregido para ya no mostrar las FKs físicas a `artists` que el refactor del punto de "Cambio de alcance" de arriba eliminó.
+
+**Verificación real ejecutada:**
+- `docker compose build` (9 imágenes) + `docker compose up` — 9 servicios + RabbitMQ en `healthy`, 0 reinicios inesperados (los 6 reinicios de auth/history/streaming fueron por la caída real del Postgres de verificación, no un bug).
+- `docker exec content-service whoami` / `docker exec artist-service whoami` → `appuser` (no-root) en los 5 servicios Python.
+- `grep -n "guest" docker-compose.yml` → solo aparece dentro de un comentario explicando el fix, no como valor hardcodeado.
+- `alembic upgrade head` contra 2 instancias de Postgres limpias (una por servicio) reprodujo el schema esperado, confirmado columna por columna.
+- Migración SQL de auth-service verificada igual, contra una tercera instancia limpia.
+- Flujo funcional completo re-verificado end-to-end tras el refactor de artistas: registro → login → registro de artista → álbum automático → canción → enriquecimiento vía HTTP (song/album/batch) → ownership → todo en verde.
+- `go build && go vet && go test ./...` + `golangci-lint run` — 0 issues en los 3 servicios Go tras los cambios de esta fase.
+- `ruff check .` + `python -m pytest tests/ -v` — 0 issues, 34 tests pasan (7 artist + 6 content + 9 playlist + 6 search + 6 subscription — 1 más que al cierre de Fase 5, por el test nuevo del endpoint `by-user` de artist-service).
+
 ---
 
 ## Orden de fases — por qué este orden

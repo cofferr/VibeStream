@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infrastructure.db.models import Album, Artist, Song
+from infrastructure.db.models import Album, Song
 
 
 class AlbumRepository:
@@ -57,7 +57,10 @@ class AlbumRepository:
         return result.scalars().all()
 
     async def get_albums_with_artist_info(self, artist_id: int) -> list[dict]:
-        """Obtiene todos los álbumes de un artista con información completa"""
+        """Obtiene todos los álbumes de un artista (sin join local a
+        Artist, Fase 6: el artist_name se resuelve vía HTTP en
+        AlbumService.get_artist_albums_with_info, una sola vez para todo
+        el lote ya que todos comparten el mismo artist_id)."""
         stmt = (
             select(
                 Album.id,
@@ -66,10 +69,7 @@ class AlbumRepository:
                 Album.cover_url,
                 Album.created_at,
                 Album.updated_at,
-                Artist.artist_name,
-                Artist.id.label("artist_id"),
             )
-            .join(Artist, Album.artist_id == Artist.id)
             .where(Album.artist_id == artist_id)
             .order_by(Album.release_date.desc().nulls_last(), Album.created_at.desc())
             .execution_options(prepared=False)
@@ -77,7 +77,6 @@ class AlbumRepository:
 
         result = await self.session.execute(stmt)
 
-        # Convertir los resultados a lista de diccionarios
         albums = []
         for row in result:
             albums.append(
@@ -88,8 +87,8 @@ class AlbumRepository:
                     "cover_url": row.cover_url,
                     "created_at": row.created_at,
                     "updated_at": row.updated_at,
-                    "artist_id": row.artist_id,
-                    "artist_name": row.artist_name,
+                    "artist_id": artist_id,
+                    "artist_name": None,
                 }
             )
 

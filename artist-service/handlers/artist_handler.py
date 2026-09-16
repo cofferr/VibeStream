@@ -147,6 +147,20 @@ async def delete_my_artist(request: Request, db: AsyncSession = Depends(get_db))
     return success_response({}, "Artista eliminado correctamente")
 
 
+@router.get("/by-user/{user_id}", response_model=dict)
+async def get_artist_by_user_id(user_id: int, db: AsyncSession = Depends(get_db)):
+    """Endpoint público de lectura: content-service lo usa para resolver el
+    artist_id del usuario autenticado (validación de ownership de
+    álbumes/canciones) sin acceso directo a la tabla artists (Fase 6:
+    reemplaza el join local que content-service mantenía como copia
+    duplicada de este modelo)."""
+    artist = await ArtistService.get_artist_by_user(db, user_id)
+    if not artist:
+        raise HTTPException(status_code=404, detail="Artista no encontrado")
+
+    return success_response(artist.model_dump(), "Artista recuperado correctamente")
+
+
 @router.get("/{artist_id}", response_model=dict)
 async def get_artist_by_id(artist_id: int, db: AsyncSession = Depends(get_db)):
     """Endpoint público de lectura: content-service, search-service y

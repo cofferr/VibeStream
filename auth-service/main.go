@@ -66,6 +66,11 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Health check (Fase 6: faltaba, los otros 7 servicios ya lo tienen)
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
 	// Rutas públicas
 	r.POST("/register", handlers.Register(userService))
 	r.POST("/login", handlers.Login(authService))

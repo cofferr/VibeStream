@@ -1,10 +1,10 @@
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from infrastructure.db.models import Album, Song
+from infrastructure.db.models import Album, Song, song_artists_table
 
 
 class SongRepository:
@@ -17,37 +17,44 @@ class SongRepository:
         await self.session.refresh(song)
         return song
 
+    async def add_artists(self, song_id: int, artist_ids: list[int]) -> None:
+        """Inserta las filas de song_artists para una canción ya creada.
+        Ya no pasa por una relación ORM a un Artist local (Fase 6): la
+        existencia del artista se valida vía HTTP antes de llamar acá
+        (ver SongService.create_song)."""
+        if not artist_ids:
+            return
+        await self.session.execute(
+            insert(song_artists_table),
+            [{"song_id": song_id, "artist_id": artist_id} for artist_id in artist_ids],
+        )
+        await self.session.commit()
+
     async def get_by_id(self, song_id: int) -> Song | None:
         result = await self.session.execute(select(Song).where(Song.id == song_id))
         return result.scalar_one_or_none()
 
     async def get_by_id_with_info(self, song_id: int) -> Song | None:
-        """Obtiene una canción con álbum y artistas precargados, para
-        endpoints públicos consumidos por otros servicios (playlist-service,
-        search-service) que ya no tienen acceso directo a estas tablas."""
+        """Obtiene una canción con álbum precargado, para endpoints
+        públicos consumidos por otros servicios (playlist-service,
+        search-service) que ya no tienen acceso directo a estas tablas.
+        El artista se resuelve vía HTTP en core/entities/song.py
+        (SongEnrichedOut.from_song), no con un join local."""
         stmt = (
-            select(Song)
-            .options(
-                selectinload(Song.album).selectinload(Album.artist),
-                selectinload(Song.artists),
-            )
-            .where(Song.id == song_id)
+            select(Song).options(selectinload(Song.album)).where(Song.id == song_id)
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def list_by_ids_with_info(self, song_ids: list[int]) -> Sequence[Song]:
-        """Batch de canciones por id, con álbum y artistas precargados.
-        Usado por playlist-service para enriquecer su lista de song_ids
-        propios en una sola llamada en vez de N."""
+        """Batch de canciones por id, con álbum precargado. Usado por
+        playlist-service para enriquecer su lista de song_ids propios en
+        una sola llamada en vez de N."""
         if not song_ids:
             return []
         stmt = (
             select(Song)
-            .options(
-                selectinload(Song.album).selectinload(Album.artist),
-                selectinload(Song.artists),
-            )
+            .options(selectinload(Song.album))
             .where(Song.id.in_(song_ids))
         )
         result = await self.session.execute(stmt)
@@ -56,12 +63,6 @@ class SongRepository:
     async def list_by_album(self, album_id: int) -> Sequence[Song]:
         result = await self.session.execute(
             select(Song).where(Song.album_id == album_id)
-        )
-        return result.scalars().all()
-
-    async def list_by_artist(self, artist_id: int) -> Sequence[Song]:
-        result = await self.session.execute(
-            select(Song).join(Song.artists).where(Song.artists.any(id=artist_id))
         )
         return result.scalars().all()
 

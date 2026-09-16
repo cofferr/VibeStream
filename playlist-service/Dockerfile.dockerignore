@@ -1,0 +1,9 @@
+.git
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/node_modules
+playlist-service/tests
+playlist-service/.pytest_cache
+playlist-service/.ruff_cache
+playlist-service/requirements-dev.txt

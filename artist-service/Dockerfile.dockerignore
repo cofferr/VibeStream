@@ -1,0 +1,9 @@
+.git
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/node_modules
+artist-service/tests
+artist-service/.pytest_cache
+artist-service/.ruff_cache
+artist-service/requirements-dev.txt

@@ -4,16 +4,17 @@ from pathlib import Path
 
 from mutagen._file import File as MutagenFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from vibestream_common.http_client import InternalServiceError
 
 from config import settings
 from core.repositories.song_repository import SongRepository
-from core.services.artist_lookup import ArtistLookupService
+from core.services.artist_lookup import ArtistLookupService, artist_client
 from events.producer import (
     publish_song_created_event,
     publish_song_deleted_event,
     publish_song_updated_event,
 )
-from infrastructure.db.models import Artist, Song
+from infrastructure.db.models import Song
 from infrastructure.storage.s3_client import (
     build_s3_public_url,
     delete_from_s3,
@@ -156,6 +157,19 @@ class SongService:
             except (ValueError, TypeError):
                 pass
 
+        # Validar que los artistas existen vía HTTP (Fase 6: antes hacía
+        # self.repo.session.get(Artist, artist_id) contra una copia local
+        # duplicada de la tabla de artist-service)
+        for artist_id in artist_ids:
+            try:
+                response = await artist_client.get(f"/artists/{artist_id}")
+            except InternalServiceError as e:
+                raise ValueError(
+                    f"No se pudo validar el artista con id {artist_id}"
+                ) from e
+            if not (response or {}).get("data"):
+                raise ValueError(f"El artista con id {artist_id} no existe")
+
         song = Song(
             title=title,
             album_id=album_id,
@@ -165,14 +179,8 @@ class SongService:
             genre_id=genre_id,
         )
 
-        # Asociar artistas
-        for artist_id in artist_ids:
-            artist = await self.repo.session.get(Artist, artist_id)
-            if not artist:
-                raise ValueError(f"El artista con id {artist_id} no existe")
-            song.artists.append(artist)
-
         song = await self.repo.create(song)
+        await self.repo.add_artists(song.id, artist_ids)
 
         await publish_song_created_event(
             {
@@ -226,10 +234,10 @@ class SongService:
                     if len(path_parts) >= 3:
                         new_key = f"{path_parts[0]}/{path_parts[1]}/{new_filename}"
                     else:
-                        artist_id = (
-                            song.artists[0].id if song.artists else song.album.artist_id
-                        )
-                        new_key = f"{artist_id}/{song.album_id}/{new_filename}"
+                        # Fase 6: antes preferia song.artists[0] (relación
+                        # local a un Artist duplicado, ya eliminada);
+                        # song.album.artist_id es la fuente confiable.
+                        new_key = f"{song.album.artist_id}/{song.album_id}/{new_filename}"
 
                     # Subir con nuevo nombre
                     upload_bytes_to_s3(
@@ -259,9 +267,8 @@ class SongService:
                 self._delete_audio_file(song.audio_url)
 
             # Subir nuevo archivo a S3
-            artist_id = song.artists[0].id if song.artists else song.album.artist_id
             audio_url = self._save_audio_file(
-                str(artist_id),
+                str(song.album.artist_id),
                 str(song.album_id),
                 audio_file,
                 song.title,

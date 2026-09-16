@@ -61,6 +61,14 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Health check (Fase 6: faltaba, los otros 7 servicios ya lo tienen).
+	// Registrado ANTES del middleware de auth global de abajo para que no
+	// requiera JWT — igual que ya hace streaming-service con su grupo
+	// público.
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok", "service": "history"})
+	})
+
 	// Middleware de autenticación
 	r.Use(middleware.AuthMiddleware(cfg.JWTSecret))
 

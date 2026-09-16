@@ -7,10 +7,14 @@ from vibestream_common.auth_middleware import AuthMiddleware as _BaseAuthMiddlew
 
 from config import settings
 
-# GET /artists/{id} es de solo lectura y la consumen content-service,
-# search-service y subscription-service (Fase 3: propiedad de datos por
-# servicio), que no tienen un JWT de usuario para reenviar.
-_PUBLIC_GET_PATH_PATTERNS = (re.compile(r"^/artists/\d+$"),)
+# GET /artists/{id} y GET /artists/by-user/{user_id} son de solo lectura y
+# las consumen content-service, search-service y subscription-service
+# (Fase 3/6: propiedad de datos por servicio), que no tienen un JWT de
+# usuario para reenviar.
+_PUBLIC_GET_PATH_PATTERNS = (
+    re.compile(r"^/artists/\d+$"),
+    re.compile(r"^/artists/by-user/\d+$"),
+)
 
 
 class AuthMiddleware(_BaseAuthMiddleware):

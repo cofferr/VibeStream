@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.entities.song import SongCreateFormData, SongEnrichedOut, SongOut
 from core.repositories.album_repository import AlbumRepository
 from core.repositories.song_repository import SongRepository
+from core.services.artist_lookup import ArtistLookupService
 from core.services.song_service import SongService
 from infrastructure.db.connection import get_db
 from utils.audio_validation import validate_audio_file
@@ -38,7 +39,12 @@ async def get_songs_batch(
 
     service = SongService(SongRepository(db))
     songs = await service.list_songs_with_info(song_ids)
-    enriched = [SongEnrichedOut.from_song(song).model_dump() for song in songs]
+    enriched = []
+    for song in songs:
+        artist_name = None
+        if song.album:
+            artist_name = await ArtistLookupService.get_artist_name(song.album.artist_id)
+        enriched.append(SongEnrichedOut.from_song(song, artist_name).model_dump())
     return success_response({"songs": enriched}, "Canciones recuperadas correctamente")
 
 
@@ -145,7 +151,10 @@ async def get_song_enriched(song_id: int, db: AsyncSession = Depends(get_db)):
     song = await service.get_song_with_info(song_id)
     if not song:
         raise HTTPException(status_code=404, detail="Canción no encontrada")
-    schema = SongEnrichedOut.from_song(song)
+    artist_name = None
+    if song.album:
+        artist_name = await ArtistLookupService.get_artist_name(song.album.artist_id)
+    schema = SongEnrichedOut.from_song(song, artist_name)
     return success_response(schema.model_dump(), "Canción recuperada correctamente")
 
 

@@ -1,0 +1,9 @@
+.git
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/node_modules
+search-service/tests
+search-service/.pytest_cache
+search-service/.ruff_cache
+search-service/requirements-dev.txt

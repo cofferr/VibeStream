@@ -81,11 +81,13 @@ class SongEnrichedOut(SongBase):
         from_attributes = True
 
     @classmethod
-    def from_song(cls, song) -> "SongEnrichedOut":
+    def from_song(cls, song, artist_name: Optional[str] = None) -> "SongEnrichedOut":
+        """artist_name se resuelve vía HTTP a artist-service en el caller
+        (core/services/artist_lookup.py: get_artist_name) — Fase 6: antes
+        se leía de song.album.artist / song.artists, una copia local
+        duplicada de la tabla de artist-service que content-service ya no
+        mantiene."""
         album = song.album
-        artist = album.artist if album else None
-        if not artist and song.artists:
-            artist = song.artists[0]
         return cls(
             id=song.id,
             title=song.title,
@@ -95,8 +97,8 @@ class SongEnrichedOut(SongBase):
             album_id=song.album_id,
             album_title=album.title if album else None,
             album_cover_url=album.cover_url if album else None,
-            artist_id=artist.id if artist else None,
-            artist_name=artist.artist_name if artist else None,
+            artist_id=album.artist_id if album else None,
+            artist_name=artist_name,
             genre_id=song.genre_id,
             created_at=song.created_at,
             updated_at=song.updated_at,

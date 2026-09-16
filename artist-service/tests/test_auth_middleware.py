@@ -23,6 +23,12 @@ def _make_app() -> TestClient:
     def health():
         return {"status": "ok"}
 
+    # registrada antes de /{artist_id}, igual que en artist_handler.py,
+    # para que FastAPI no la matchee como artist_id="by-user"
+    @app.get("/artists/by-user/{user_id}")
+    def get_artist_by_user(user_id: str):
+        return {"user_id": user_id}
+
     @app.get("/artists/{artist_id}")
     def get_artist(artist_id: str):
         return {"artist_id": artist_id}
@@ -58,6 +64,14 @@ def test_health_is_public():
 def test_get_artist_by_id_is_public():
     client = _make_app()
     resp = client.get("/artists/123")
+    assert resp.status_code == 200
+
+
+def test_get_artist_by_user_id_is_public():
+    """Fase 6: content-service la usa para resolver el artist_id del
+    usuario autenticado, sin JWT de usuario para reenviar."""
+    client = _make_app()
+    resp = client.get("/artists/by-user/1")
     assert resp.status_code == 200
 
 
