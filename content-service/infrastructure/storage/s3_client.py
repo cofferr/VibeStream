@@ -34,15 +34,21 @@ def delete_from_s3(bucket: str, key: str) -> bool:
 
 def extract_s3_key_from_url(url: str, bucket: str, region: str) -> str | None:
     """
-    Extrae el key de S3 desde una URL pública de AWS.
-    Ejemplo: https://bucket.s3.region.amazonaws.com/artist/album/file.mp3 -> artist/album/file.mp3
+    Extrae el key de S3 desde una URL pública. Reconoce tanto el formato
+    real de AWS como el de LocalStack (settings.aws_endpoint_url) — ver
+    build_s3_public_url, que genera ambos formatos según corresponda.
+    Ejemplo AWS: https://bucket.s3.region.amazonaws.com/artist/album/file.mp3
+    Ejemplo LocalStack: http://localstack:4566/bucket/artist/album/file.mp3
     """
     try:
-        # Para AWS: https://bucket.s3.region.amazonaws.com/key
-        prefix = f"https://{bucket}.s3.{region}.amazonaws.com/"
-        if url.startswith(prefix):
-            return url[len(prefix):]
-        
+        prefixes = [f"https://{bucket}.s3.{region}.amazonaws.com/"]
+        if settings.aws_endpoint_url:
+            prefixes.append(f"{settings.aws_endpoint_url}/{bucket}/")
+
+        for prefix in prefixes:
+            if url.startswith(prefix):
+                return url[len(prefix):]
+
         return None
     except Exception as e:
         print(f"[!] Error extrayendo key de URL: {e}")
@@ -50,5 +56,10 @@ def extract_s3_key_from_url(url: str, bucket: str, region: str) -> str | None:
 
 
 def build_s3_public_url(bucket: str, region: str, key: str) -> str:
-    """Crea una URL pública de S3 para AWS."""
+    """Crea una URL pública del objeto. Si hay un endpoint local
+    configurado (LocalStack), apunta ahí en vez del dominio real de AWS
+    — el "addressing style" de LocalStack es path-style, no
+    virtual-hosted (ver Settings.get_s3_client)."""
+    if settings.aws_endpoint_url:
+        return f"{settings.aws_endpoint_url}/{bucket}/{key}"
     return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"

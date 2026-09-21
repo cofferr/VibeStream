@@ -117,6 +117,87 @@ async def test_count_and_list_user_playlists(session):
     assert {p.name for p in playlists} == {"Una", "Otra"}
 
 
+# --- columnas agregadas post-Fase 6, alineadas con create_database.sql --
+
+
+async def test_add_song_updates_total_songs_and_duration(session):
+    playlist = await _make_playlist(session)
+    repo = PlaylistRepository(session)
+
+    await repo.add_song_to_playlist(
+        playlist.id, song_id=1, user_id=1, duration_seconds=180
+    )
+    await repo.add_song_to_playlist(
+        playlist.id, song_id=2, user_id=1, duration_seconds=220
+    )
+
+    updated = await repo.get_playlist_by_id(playlist.id, user_id=1)
+    assert updated.total_songs == 2
+    assert updated.total_duration == 400
+
+
+async def test_remove_song_decrements_total_songs_and_duration(session):
+    playlist = await _make_playlist(session)
+    repo = PlaylistRepository(session)
+    await repo.add_song_to_playlist(
+        playlist.id, song_id=1, user_id=1, duration_seconds=180
+    )
+    await repo.add_song_to_playlist(
+        playlist.id, song_id=2, user_id=1, duration_seconds=220
+    )
+
+    await repo.remove_song_from_playlist(playlist.id, song_id=1, user_id=1)
+
+    updated = await repo.get_playlist_by_id(playlist.id, user_id=1)
+    assert updated.total_songs == 1
+    assert updated.total_duration == 220
+
+
+async def test_songs_ordered_by_position(session):
+    playlist = await _make_playlist(session)
+    repo = PlaylistRepository(session)
+
+    # se agregan en orden: 1, 2, 3 -> position 0, 1, 2
+    await repo.add_song_to_playlist(playlist.id, song_id=1, user_id=1)
+    await repo.add_song_to_playlist(playlist.id, song_id=2, user_id=1)
+    await repo.add_song_to_playlist(playlist.id, song_id=3, user_id=1)
+    # quitar la del medio no reordena las restantes (no se "compactan")
+    await repo.remove_song_from_playlist(playlist.id, song_id=2, user_id=1)
+
+    rows = await repo.get_playlist_song_rows(playlist.id, user_id=1)
+    assert [r.song_id for r in rows] == [1, 3]
+    assert [r.position for r in rows] == [0, 2]
+
+
+async def test_add_song_sets_added_by(session):
+    playlist = await _make_playlist(session, user_id=1)
+    repo = PlaylistRepository(session)
+
+    await repo.add_song_to_playlist(playlist.id, song_id=1, user_id=1)
+
+    rows = await repo.get_playlist_song_rows(playlist.id, user_id=1)
+    assert rows[0].added_by == 1
+
+
+async def test_update_playlist_new_fields(session):
+    playlist = await _make_playlist(session)
+    repo = PlaylistRepository(session)
+
+    updated = await repo.update_playlist(
+        playlist.id,
+        user_id=1,
+        cover_image="https://example.com/cover.jpg",
+        is_public=False,
+        is_collaborative=True,
+    )
+
+    assert updated.cover_image == "https://example.com/cover.jpg"
+    assert updated.is_public is False
+    assert updated.is_collaborative is True
+    # el resto de los defaults no se pisa por pasar solo estos campos
+    assert updated.name == "Mi playlist"
+
+
 # --- Fase 1: fallos reales se re-lanzan como RepositoryError, no se
 # tragan como False/[]/0 -------------------------------------------------
 

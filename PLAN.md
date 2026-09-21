@@ -341,3 +341,60 @@ Verificado con datos reales contra el stack Docker: registrar artista → álbum
 - **4** antes de **5**: no tiene sentido escribir tests contra una topología de RabbitMQ que está por cambiar.
 - **5** antes de **6**: CI debe existir antes de tocar Docker, para que los cambios de Dockerfile de la Fase 6 queden validados por un build real en CI.
 - **6** al final: es pulido operacional, más seguro de hacer una vez que el código ya está asentado.
+
+---
+
+## Post-Fase 6 — hallazgos al comparar contra el schema original real (2026-09-21)
+
+El usuario aportó dos documentos con el schema original real (no reconstruido): `database_schemas.md` (columnas por tabla, leídas de la instancia Supabase real) y **`create_database.sql`** (el DDL completo — este es el que el usuario marcó como autoritativo por sobre el `.md` cuando difieren). Confirman que `music_streaming` es efectivamente el schema correcto (ninguna referencia a `music_stm`, el legacy en español, existe en el código — verificado con grep) y exponen hallazgos reales:
+
+**Explícitamente descartado por el usuario: no se implementa módulo de analítica/dashboard.**
+`create_database.sql` incluye 4 tablas de stats ya diseñadas (`song_stats`, `album_stats`, `artist_stats`, `daily_song_stats` — agregados mensuales/diarios de reproducciones) más 7 tablas de features adyacentes nunca construidas en el código (`now_playing`, `search_history`, `user_follows`, `user_likes`, `track_mood_features`, `mood_session_context`, `user_mood_settings` — recomendación por "mood"/IA). El usuario confirmó la intención original: en algún momento se planeó un dashboard por artista y analítica de usuarios, pero nunca se construyó — y decidió explícitamente **no implementarlo ahora**. Se deja anotado acá como backlog conocido, con el schema ya diseñado en `create_database.sql` por si se retoma en el futuro.
+
+**Discrepancias reales encontradas, pendientes de decisión (no implementadas todavía):**
+
+1. **`created_at`/`updated_at` de `artists`, `albums`, `songs`, `playlists` son `DATE` en el original**, no `TIMESTAMP`. Esta sesión (verificación de Fase 3) se había "corregido" Pydantic/SQLAlchemy de `date` a `datetime` en content-service y artist-service, asumiendo que `TIMESTAMP` era lo correcto — con este dato nuevo, esa corrección se alejó del diseño original. Además, `updated_at` no tiene default ni `onupdate` en el DDL real: se esperaba que la aplicación lo seteara explícitamente en cada UPDATE, no que Postgres lo calculara solo (lo que sí hacen hoy los modelos actuales vía `onupdate=CURRENT_TIMESTAMP`).
+2. **`users.registerdate` es `DATE`**, no `TIMESTAMP` (`schema_reconstruido.sql` y la migración SQL de auth-service lo tienen como `TIMESTAMP`).
+3. **`jwt.refresh_tokens.token` tiene `UNIQUE`** en el original; la migración actual no lo declara.
+4. **`jwt.refresh_tokens.user_id` NO tiene FK física a `users`** en el original (`INTEGER NOT NULL` a secas); la migración actual sí la agregó (`REFERENCES ... ON DELETE CASCADE`).
+5. **No existe ninguna tabla de unión playlist↔canción en `music_streaming`** en el original (solo existía en `music_stm`, la versión legacy en español). El `playlist_songs` que usa playlist-service hoy no es una reconstrucción de algo real — es algo que hubo que inventar porque la feature de playlists lo necesita y el schema "avanzado" nunca llegó a tener esa tabla. Vale la pena tenerlo presente como contexto (no es un error nuestro, es un hueco real del diseño original), no requiere acción.
+
+**Resuelto por el usuario (2026-09-21):**
+
+- **Punto 1 y 2 (DATE vs TIMESTAMP)**: el usuario decidió **usar TIMESTAMP**, es decir, mantener el comportamiento actual — no revertir el fix de esta sesión. No requirió cambios de código (ya estaba así).
+- **Puntos 3 y 4 (jwt.refresh_tokens)**: el usuario aclaró que jwt "es solo una validación para usar las APIs" — se interpreta como decisión de **no tocar** `auth-service/migrations/0001_init_users_and_refresh_tokens.sql`; se mantiene el `UNIQUE` faltante y la FK física de más tal como están hoy.
+- **Punto 5 (playlist_songs)**: el usuario pidió **empezar la implementación** alineando `playlists`/`playlist_songs` con `create_database.sql`. Implementado:
+  - `playlist-service/database/models.py`: `Playlist` gana `cover_image`, `is_public`, `is_collaborative`, `total_songs`, `total_duration`, `follower_count`, `play_count`, `deleted_at` (columnas del original que faltaban); `created_at`/`updated_at` pasan de `Date` a `DateTime` (mismo criterio del punto 1). `PlaylistSong` gana `added_by` y `position`, tomados de la tabla equivalente de `music_stm.playlists_canciones` (`agregado_por`/`orden`) ya que `music_streaming` real no tiene ninguna tabla de unión playlist↔canción que copiar.
+  - `duration_seconds` en `PlaylistSong` (agregado nuestro, no está en ningún original): snapshot de la duración al agregar la canción, para poder mantener `total_duration` sin pedirle de nuevo la canción a content-service al quitarla.
+  - `total_songs`/`total_duration` se mantienen al vuelo en `add_song_to_playlist`/`remove_song_from_playlist` (repository). `follower_count`/`play_count` quedan como columnas con default 0 **sin lógica que las actualice** — necesitarían features que no existen (seguir una playlist, tracking de reproducciones) y son deuda adyacente a la analítica que el usuario decidió no implementar. `deleted_at` existe como columna pero `delete_playlist` sigue haciendo borrado físico — cambiar esa semántica es una decisión aparte, no implícita en agregar la columna.
+  - `PlaylistRepository.get_playlist_song_rows` ahora ordena por `position` (las filas viejas sin posición asignada quedan al final, por `added_at`).
+  - `database/dtos.py` se eliminó: código muerto (nada lo importaba, `playlist_handlers.py` ya tenía sus propios DTOs inline) que habría quedado desactualizado con estos cambios. La serialización `_playlist_to_dict` se centralizó en `services/playlist_service.py` (antes vivía duplicada en el handler).
+  - `schema_reconstruido.sql` actualizado con el nuevo `CREATE TABLE` de `playlists`/`playlist_songs`.
+  - 6 tests nuevos en `playlist-service/tests/test_playlist_repository.py` (mantenimiento de `total_songs`/`total_duration`, orden por `position`, `added_by`, actualización de los campos nuevos) — **14/14 pasan contra SQLite en memoria** (no se levantó Postgres/Docker Compose para esto, indicación explícita del usuario: "ya que no vamos a montar el proyecto... podés usar sqlite").
+
+No se corrigieron (quedan tal cual, ver arriba): jwt.refresh_tokens (puntos 3-4).
+
+---
+
+## Post-Fase 6 — Postgres y LocalStack reales en docker-compose (2026-09-21)
+
+Revisión completa pedida por el usuario ("¿falta algo?") encontró un problema activo real: el `playlist-service` corriendo en ese momento era de antes de los cambios de schema de la sección anterior, y el Postgres de verificación (un contenedor ad-hoc fuera de `docker-compose.yml`, usado desde Fase 3) todavía tenía el schema viejo de `playlists`/`playlist_songs` — reconstruir y redeployar con el código nuevo sin migrar la BD habría roto el servicio. El usuario pidió resolverlo montando Postgres en Docker de verdad, y de paso agregar LocalStack (ya instalado por el usuario, disponible vía Docker) para poder probar el flujo de S3 completo por primera vez en todo este trabajo — nunca se había podido ejercitar `POST /songs` con un archivo real, ni la subida de foto de perfil de artista, ni el streaming con soporte de `Range`, por falta de credenciales AWS.
+
+**`docker-compose.yml` — 2 servicios nuevos:**
+- `postgres` (postgres:16-alpine): bootstrapea con `schema_reconstruido.sql` completo vía `docker-entrypoint-initdb.d/` (mecanismo estándar de la imagen oficial: corre una sola vez, contra un volumen vacío). Esto resuelve el desincronizado de playlist-service de raíz — el schema ya incluido es el actualizado con `cover_image`/`is_public`/`total_songs`/etc. Nota documentada en el propio compose: Alembic (content-service, artist-service) gestiona el *drift incremental* a partir de acá, no el bootstrap inicial.
+- `localstack` (localstack/localstack:3.8, `SERVICES=s3`): con un script de init (`localstack/init/01-create-bucket.sh`, usa `awslocal` — ya viene en la imagen, no hace falta instalarlo en el host) que crea el bucket automáticamente al arrancar.
+- Los 8 servicios backend ganan `depends_on: postgres: condition: service_healthy`; los 3 que hablan con S3 (content-service, artist-service, streaming-service) ganan además `depends_on: localstack: condition: service_healthy`.
+- 2 volúmenes nombrados nuevos: `postgres_data`, `localstack_data`.
+
+**Código — soporte de endpoint S3 configurable (`AWS_ENDPOINT_URL`), sin tocar el comportamiento de AWS real cuando la variable no está seteada:**
+- `content-service/config.py`, `artist-service/config.py`: `get_s3_client()` pasa `endpoint_url` + `Config(s3={"addressing_style": "path"})` a boto3 cuando `aws_endpoint_url` está seteado (LocalStack no resuelve virtual-hosted-style). `get_public_base_url()` idem.
+- `content-service/infrastructure/storage/s3_client.py`: `build_s3_public_url`/`extract_s3_key_from_url` generan/reconocen ambos formatos de URL (AWS real y LocalStack) — esta es la función que realmente usan album/song_service (a diferencia de `settings.get_public_base_url()`, que resultó ser código muerto en content-service).
+- `streaming-service/config/config.go`: nuevo campo `AWSEndpointURL`. `streaming-service/aws/s3.go`: `s3.NewFromConfig` con `BaseEndpoint`/`UsePathStyle` cuando corresponde. `streaming-service/utils/s3_utils.go`: `ExtractS3KeyFromURL` reconoce el formato LocalStack además del de AWS real.
+- `.env`/`.env.example`: `POSTGRES_USER/PASSWORD/DB` (deben coincidir con `db_url_py`/`DB_URL`, mismo caso de "no hay variables derivadas" que RabbitMQ); `AWS_ENDPOINT_URL=http://localstack:4566` + credenciales dummy (`test`/`test`, LocalStack no las valida pero boto3/el SDK de Go exigen que no estén vacías).
+
+**Verificado de punta a punta contra el stack real (primera vez para varios de estos flujos):**
+- `docker compose up` desde cero: los 11 servicios (9 app + rabbitmq + postgres + localstack) quedan `healthy` sin intervención — el stack es autocontenido por primera vez (antes asumía una BD externa).
+- Registro → login → registro de artista **con foto de perfil real subida a LocalStack** (`profile_pic` queda con URL `http://localstack:4566/vibestream-media/1/utils/profile_picture.png`, confirmado descargable) → álbum "Sencillos" automático → **`POST /songs` con archivo de audio real** (nunca antes probado en esta sesión completa) → `GET /songs/{id}/enriched` → **streaming real vía `GET /stream`, incluyendo `Range` header (200 con el archivo completo, 206 con contenido parcial exacto)** → crear playlist con los campos nuevos → agregar la canción (confirmado en la fila real de Postgres: `added_by`, `position`, `duration_seconds` todos correctos) → búsqueda encuentra la canción vía el pipeline real de eventos RabbitMQ.
+- Iteración anterior a este bootstrap: se dio de baja el contenedor Postgres ad-hoc de verificación (`vibestream-postgres-verify`, usado desde Fase 3 por fuera de compose) y las redes Docker huérfanas que había generado — ya no hacen falta, `docker compose up` es autosuficiente.
+
+**Pendiente real remanente:** el archivo de audio usado para la prueba de upload es un MP3 sintético mínimo (no un audio real), así que `mutagen` no pudo extraer duración/metadata real (`duration: 0`) — la lógica de extracción de metadata en sí no quedó ejercitada con un archivo de audio genuino, solo el pipeline de upload/storage/streaming alrededor de ella.

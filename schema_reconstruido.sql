@@ -187,21 +187,55 @@ CREATE TABLE music_streaming.artist_subscriptions (
 -- resuelve vía GET /songs/batch en vez de un join local — es el trade-off
 -- estándar de microservicios entre integridad referencial fuerte e
 -- independencia real de despliegue por servicio.
+--
+-- ACTUALIZADO post-Fase 6, contra create_database.sql (schema original
+-- real aportado por el usuario 2026-09-21):
+--   - created_at/updated_at pasan de DATE a TIMESTAMP (decisión
+--     explícita del usuario — el original usaba DATE, se decidió
+--     divergir a propósito).
+--   - se agregan las columnas que playlists sí tenía en el original y
+--     acá faltaban: cover_image, is_public, is_collaborative,
+--     total_songs, total_duration, follower_count, play_count,
+--     deleted_at. follower_count/play_count quedan sin lógica que las
+--     actualice (necesitarían features que no existen: seguir una
+--     playlist, tracking de reproducciones — deuda adyacente a
+--     analítica, fuera de alcance). deleted_at existe pero
+--     delete_playlist sigue haciendo borrado físico por ahora.
+--   - playlist_songs NO existe en el music_streaming real (solo en
+--     music_stm, la versión legacy en español, como
+--     playlists_canciones) — se mantiene como algo que este servicio
+--     necesita igual para que la feature funcione. added_by/position se
+--     tomaron de esa tabla legacy (agregado_por/orden).
+--     duration_seconds es un agregado nuestro (no está en ningún
+--     original): guarda un snapshot de la duración al agregar la
+--     canción para poder mantener playlists.total_duration sin pedirle
+--     de nuevo la canción a content-service al momento de quitarla.
 -- ============================================================================
 
 CREATE TABLE music_streaming.playlists (
-    id           SERIAL PRIMARY KEY,
-    user_id      INTEGER NOT NULL,
-    name         VARCHAR NOT NULL,
-    description  TEXT,
-    created_at   DATE DEFAULT CURRENT_DATE,
-    updated_at   DATE DEFAULT CURRENT_DATE
+    id                SERIAL PRIMARY KEY,
+    user_id           INTEGER NOT NULL,
+    name              VARCHAR NOT NULL,
+    description       TEXT,
+    cover_image       TEXT,
+    is_public         BOOLEAN NOT NULL DEFAULT TRUE,
+    is_collaborative  BOOLEAN NOT NULL DEFAULT FALSE,
+    total_songs       INTEGER NOT NULL DEFAULT 0,
+    total_duration    INTEGER NOT NULL DEFAULT 0,
+    follower_count    INTEGER NOT NULL DEFAULT 0,  -- sin lógica que lo actualice, ver nota arriba
+    play_count        INTEGER NOT NULL DEFAULT 0,  -- sin lógica que lo actualice, ver nota arriba
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at        TIMESTAMP  -- columna presente, borrado sigue siendo físico por ahora
 );
 
 CREATE TABLE music_streaming.playlist_songs (
-    playlist_id  INTEGER NOT NULL REFERENCES music_streaming.playlists(id),
-    song_id      INTEGER NOT NULL,
-    added_at     DATE DEFAULT CURRENT_DATE,
+    playlist_id       INTEGER NOT NULL REFERENCES music_streaming.playlists(id),
+    song_id           INTEGER NOT NULL,
+    added_by          INTEGER,  -- user_id de quien la agregó, sin FK (users vive en auth-service)
+    position          INTEGER,  -- NULL en filas de antes de este cambio
+    duration_seconds  INTEGER,  -- snapshot, ver nota arriba
+    added_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (playlist_id, song_id)
 );
 

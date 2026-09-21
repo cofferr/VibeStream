@@ -7,10 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import get_db
-from database.models import Playlist
 from errors import handle_errors
 from repositories.playlist_repository import PlaylistRepository
-from services.playlist_service import PlaylistService
+from services.playlist_service import PlaylistService, _playlist_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -21,27 +20,21 @@ router = APIRouter()
 class CreatePlaylistRequest(BaseModel):
     name: str
     description: Optional[str] = None
+    cover_image: Optional[str] = None
+    is_public: bool = True
+    is_collaborative: bool = False
 
 
 class UpdatePlaylistRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    cover_image: Optional[str] = None
+    is_public: Optional[bool] = None
+    is_collaborative: Optional[bool] = None
 
 
 class AddSongRequest(BaseModel):
     song_id: int
-
-
-def _playlist_to_dict(playlist: Playlist) -> dict:
-    """Convierte un objeto Playlist a diccionario para la respuesta"""
-    return {
-        "id": playlist.id,
-        "name": playlist.name,
-        "description": playlist.description,
-        "user_id": playlist.user_id,
-        "created_at": playlist.created_at,
-        "updated_at": playlist.updated_at,
-    }
 
 
 @router.post("/", response_model=dict)
@@ -64,7 +57,11 @@ async def create_playlist(
     service = PlaylistService(repo, user_id)
 
     playlist = await service.create_playlist(
-        playlist_data.name, playlist_data.description
+        playlist_data.name,
+        playlist_data.description,
+        cover_image=playlist_data.cover_image,
+        is_public=playlist_data.is_public,
+        is_collaborative=playlist_data.is_collaborative,
     )
 
     return _playlist_to_dict(playlist)
@@ -105,7 +102,16 @@ async def update_playlist(
     user_id = request.state.user["user_id"]
 
     # Validar que al menos un campo se esté actualizando
-    if playlist_data.name is None and playlist_data.description is None:
+    if all(
+        value is None
+        for value in (
+            playlist_data.name,
+            playlist_data.description,
+            playlist_data.cover_image,
+            playlist_data.is_public,
+            playlist_data.is_collaborative,
+        )
+    ):
         raise HTTPException(
             status_code=400,
             detail="Debe proporcionar al menos un campo para actualizar",
@@ -114,7 +120,12 @@ async def update_playlist(
     repo = PlaylistRepository(db)
     service = PlaylistService(repo, user_id)
     playlist = await service.update_playlist(
-        playlist_id, playlist_data.name, playlist_data.description
+        playlist_id,
+        playlist_data.name,
+        playlist_data.description,
+        cover_image=playlist_data.cover_image,
+        is_public=playlist_data.is_public,
+        is_collaborative=playlist_data.is_collaborative,
     )
 
     if playlist is None:

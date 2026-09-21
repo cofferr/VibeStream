@@ -21,6 +21,9 @@ type Config struct {
 	AWSSessionToken    string
 	AWSRegion          string
 	AWSS3Bucket        string
+	// Si está seteado, el cliente S3 apunta a un endpoint emulado
+	// (LocalStack) en vez de AWS real. Ver docker-compose.yml.
+	AWSEndpointURL string
 }
 
 var (
@@ -53,6 +56,7 @@ func GetConfig() *Config {
 			AWSSessionToken:    getEnv("AWS_SESSION_TOKEN", ""),
 			AWSRegion:          getEnv("AWS_REGION", "us-east-1"),
 			AWSS3Bucket:        getEnv("AWS_S3_BUCKET", ""),
+			AWSEndpointURL:     getEnv("AWS_ENDPOINT_URL", ""),
 		}
 
 		println("🔧 Streaming Service Config:")

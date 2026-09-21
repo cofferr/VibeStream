@@ -1,6 +1,5 @@
 # core/repositories/playlist_repository.py
 import logging
-from datetime import date
 from typing import List, Optional
 
 from sqlalchemy import delete, select
@@ -29,6 +28,9 @@ class PlaylistRepository:
         user_id: int,  # Añadido para verificar permisos
         name: Optional[str] = None,
         description: Optional[str] = None,
+        cover_image: Optional[str] = None,
+        is_public: Optional[bool] = None,
+        is_collaborative: Optional[bool] = None,
     ) -> Optional[Playlist]:
         """Editar una playlist - updated_at se actualiza automáticamente"""
         # Buscar la playlist verificando que pertenezca al usuario
@@ -46,6 +48,12 @@ class PlaylistRepository:
             playlist.name = name
         if description is not None:
             playlist.description = description
+        if cover_image is not None:
+            playlist.cover_image = cover_image
+        if is_public is not None:
+            playlist.is_public = is_public
+        if is_collaborative is not None:
+            playlist.is_collaborative = is_collaborative
 
         # El updated_at se actualiza automáticamente por la configuración onupdate
         await self.session.commit()
@@ -87,10 +95,12 @@ class PlaylistRepository:
     async def get_playlist_song_rows(
         self, playlist_id: int, user_id: int
     ) -> List[PlaylistSong]:
-        """Obtiene las filas playlist_songs (solo song_id + added_at) de una
-        playlist propia. El enriquecimiento con título/artista/portada se
-        hace en el service vía el endpoint batch de content-service, ya que
-        songs ya no es una tabla de este servicio."""
+        """Obtiene las filas playlist_songs de una playlist propia,
+        ordenadas por posición (las filas sin posición asignada, de antes
+        de este cambio, quedan al final por fecha de agregado). El
+        enriquecimiento con título/artista/portada se hace en el service
+        vía el endpoint batch de content-service, ya que songs ya no es
+        una tabla de este servicio."""
         playlist = await self.get_playlist_by_id(playlist_id, user_id)
         if not playlist:
             return []
@@ -98,17 +108,29 @@ class PlaylistRepository:
         stmt = (
             select(PlaylistSong)
             .where(PlaylistSong.playlist_id == playlist_id)
-            .order_by(PlaylistSong.added_at.asc())
+            .order_by(
+                PlaylistSong.position.is_(None),
+                PlaylistSong.position.asc(),
+                PlaylistSong.added_at.asc(),
+            )
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
     async def add_song_to_playlist(
-        self, playlist_id: int, song_id: int, user_id: int
+        self,
+        playlist_id: int,
+        song_id: int,
+        user_id: int,
+        duration_seconds: Optional[int] = None,
     ) -> bool:
         """Añadir una canción a la playlist verificando permisos. La
         existencia de la canción en content-service la valida el service
-        antes de llamar aquí (ya no hay FK local a songs)."""
+        antes de llamar aquí (ya no hay FK local a songs). Mantiene
+        Playlist.total_songs/total_duration al vuelo — total_duration usa
+        el duration_seconds que trae el caller (ya lo tiene del mismo
+        llamado a content-service que validó la canción) en vez de pedirlo
+        de nuevo."""
         try:
             # Verificar que la playlist pertenece al usuario
             playlist = await self.get_playlist_by_id(playlist_id, user_id)
@@ -124,12 +146,20 @@ class PlaylistRepository:
             if existing:
                 return True  # Ya existe, no es error
 
-            # Añadir la canción a la playlist
-            playlist_song = PlaylistSong(
-                playlist_id=playlist_id, song_id=song_id, added_at=date.today()
-            )
+            next_position = playlist.total_songs
 
+            playlist_song = PlaylistSong(
+                playlist_id=playlist_id,
+                song_id=song_id,
+                added_by=user_id,
+                position=next_position,
+                duration_seconds=duration_seconds,
+            )
             self.session.add(playlist_song)
+
+            playlist.total_songs += 1
+            playlist.total_duration += duration_seconds or 0
+
             await self.session.commit()
             return True
 
@@ -143,7 +173,11 @@ class PlaylistRepository:
     async def remove_song_from_playlist(
         self, playlist_id: int, song_id: int, user_id: int
     ) -> bool:
-        """Eliminar una canción de la playlist verificando permisos"""
+        """Eliminar una canción de la playlist verificando permisos.
+        Decrementa Playlist.total_songs/total_duration usando el
+        duration_seconds guardado en la fila (evita un round-trip a
+        content-service, y no se ve afectado si la canción ya no existe
+        ahí)."""
         try:
             # Verificar que la playlist pertenece al usuario
             playlist = await self.get_playlist_by_id(playlist_id, user_id)
@@ -161,6 +195,12 @@ class PlaylistRepository:
                 return False
 
             await self.session.delete(playlist_song)
+
+            playlist.total_songs = max(0, playlist.total_songs - 1)
+            playlist.total_duration = max(
+                0, playlist.total_duration - (playlist_song.duration_seconds or 0)
+            )
+
             await self.session.commit()
             return True
 

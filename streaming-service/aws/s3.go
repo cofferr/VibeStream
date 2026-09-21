@@ -56,9 +56,20 @@ func InitS3() error {
 		return err
 	}
 
-	S3 = s3.NewFromConfig(awsCfg)
+	if cfg.AWSEndpointURL != "" {
+		// LocalStack: apunta el cliente a un endpoint local en vez de
+		// AWS real, con addressing "path style" (LocalStack no resuelve
+		// el "virtual hosted style" que usa el SDK por default).
+		S3 = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+			o.BaseEndpoint = &cfg.AWSEndpointURL
+			o.UsePathStyle = true
+		})
+		println("☁️  S3 client inicializado (LocalStack:", cfg.AWSEndpointURL, ")")
+	} else {
+		S3 = s3.NewFromConfig(awsCfg)
+		println("☁️  S3 client inicializado")
+	}
 	Bucket = cfg.AWSS3Bucket
 
-	println("☁️  S3 client inicializado")
 	return nil
 }

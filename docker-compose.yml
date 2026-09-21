@@ -1,5 +1,54 @@
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      # Deben coincidir con db_url_py/DB_URL en .env (docker-compose no
+      # soporta variables derivadas de otras variables dentro del mismo
+      # .env, mismo caso que RABBITMQ_USER/PASS vs RABBITMQ_URL).
+      POSTGRES_USER: ${POSTGRES_USER:-vibestream}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibestream}
+      POSTGRES_DB: ${POSTGRES_DB:-vibestream}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # schema_reconstruido.sql es el snapshot completo de todas las
+      # tablas: bootstrap de una BD nueva. Alembic (content-service,
+      # artist-service) gestiona el drift incremental a partir de acá,
+      # no el bootstrap inicial — ver PLAN.md, Fase 6.
+      - ./schema_reconstruido.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vibestream} -d ${POSTGRES_DB:-vibestream}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - vibestream-network
+
+  localstack:
+    image: localstack/localstack:3.8
+    container_name: localstack
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-vibestream-media}
+    volumes:
+      - ./localstack/init:/etc/localstack/init/ready.d:ro
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - vibestream-network
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -37,6 +86,10 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
     networks:
       - vibestream-network
 
@@ -54,6 +107,10 @@ services:
     env_file: .env
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     networks:
       - vibestream-network
@@ -73,6 +130,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     networks:
       - vibestream-network
 
@@ -90,6 +149,8 @@ services:
     env_file: .env
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - vibestream-network
@@ -109,6 +170,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     networks:
       - vibestream-network
 
@@ -126,6 +189,8 @@ services:
     env_file: .env
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - vibestream-network
@@ -145,6 +210,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     networks:
       - vibestream-network
 
@@ -162,6 +229,10 @@ services:
     env_file: .env
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     networks:
       - vibestream-network
@@ -190,4 +261,8 @@ services:
 networks:
   vibestream-network:
     driver: bridge
+
+volumes:
+  postgres_data:
+  localstack_data:
 

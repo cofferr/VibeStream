@@ -11,6 +11,26 @@ from repositories.playlist_repository import PlaylistRepository
 logger = logging.getLogger(__name__)
 
 
+def _playlist_to_dict(playlist: Playlist) -> Dict[str, Any]:
+    """Serialización compartida entre el service y los handlers (Fase
+    post-6: antes vivía duplicada en handlers/playlist_handlers.py)."""
+    return {
+        "id": playlist.id,
+        "name": playlist.name,
+        "description": playlist.description,
+        "user_id": playlist.user_id,
+        "cover_image": playlist.cover_image,
+        "is_public": playlist.is_public,
+        "is_collaborative": playlist.is_collaborative,
+        "total_songs": playlist.total_songs,
+        "total_duration": playlist.total_duration,
+        "follower_count": playlist.follower_count,
+        "play_count": playlist.play_count,
+        "created_at": playlist.created_at,
+        "updated_at": playlist.updated_at,
+    }
+
+
 class PlaylistService:
     def __init__(self, repo: PlaylistRepository, user_id: int):
         self.repo = repo
@@ -18,7 +38,12 @@ class PlaylistService:
         self.content_client = InternalHTTPClient(settings.content_service_url)
 
     async def create_playlist(
-        self, name: str, description: Optional[str] = None
+        self,
+        name: str,
+        description: Optional[str] = None,
+        cover_image: Optional[str] = None,
+        is_public: bool = True,
+        is_collaborative: bool = False,
     ) -> Playlist:
         """Crear una nueva playlist"""
         # Validación básica
@@ -30,6 +55,9 @@ class PlaylistService:
             user_id=self.user_id,
             name=name.strip(),
             description=description.strip() if description else None,
+            cover_image=cover_image,
+            is_public=is_public,
+            is_collaborative=is_collaborative,
         )
 
         return await self.repo.create_playlist(playlist)
@@ -39,6 +67,9 @@ class PlaylistService:
         playlist_id: int,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        cover_image: Optional[str] = None,
+        is_public: Optional[bool] = None,
+        is_collaborative: Optional[bool] = None,
     ) -> Optional[Playlist]:
         """Actualizar una playlist existente"""
         # Validación básica
@@ -50,7 +81,13 @@ class PlaylistService:
         clean_description = description.strip() if description else None
 
         return await self.repo.update_playlist(
-            playlist_id, self.user_id, clean_name, clean_description
+            playlist_id,
+            self.user_id,
+            clean_name,
+            clean_description,
+            cover_image=cover_image,
+            is_public=is_public,
+            is_collaborative=is_collaborative,
         )
 
     async def delete_playlist(self, playlist_id: int) -> bool:
@@ -74,8 +111,8 @@ class PlaylistService:
         if not rows:
             return []
 
-        added_at_by_song_id = {row.song_id: row.added_at for row in rows}
-        song_ids = list(added_at_by_song_id.keys())
+        rows_by_song_id = {row.song_id: row for row in rows}
+        song_ids = list(rows_by_song_id.keys())
 
         try:
             response = await self.content_client.get(
@@ -93,7 +130,7 @@ class PlaylistService:
         }
 
         formatted_songs = []
-        for song_id, added_at in added_at_by_song_id.items():
+        for song_id, row in rows_by_song_id.items():
             song = songs_by_id.get(song_id)
             if not song:
                 # La canción fue borrada en content-service después de
@@ -109,7 +146,9 @@ class PlaylistService:
                     "album_title": song.get("album_title"),
                     "album_cover": song.get("album_cover_url"),
                     "audio_url": song.get("audio_url"),
-                    "added_at": added_at.isoformat() if added_at else None,
+                    "position": row.position,
+                    "added_by": row.added_by,
+                    "added_at": row.added_at.isoformat() if row.added_at else None,
                 }
             )
 
@@ -133,8 +172,9 @@ class PlaylistService:
         if not song:
             return False, "La canción no existe."
 
+        duration = (song.get("data") or {}).get("duration")
         success = await self.repo.add_song_to_playlist(
-            playlist_id, song_id, self.user_id
+            playlist_id, song_id, self.user_id, duration_seconds=duration
         )
 
         if success:
@@ -195,18 +235,7 @@ class PlaylistService:
         has_next = page < total_pages
         has_previous = page > 1
 
-        # Formatear playlists para la respuesta
-        playlist_list = []
-        for playlist in playlists:
-            playlist_dict = {
-                "id": playlist.id,
-                "name": playlist.name,
-                "description": playlist.description,
-                "user_id": playlist.user_id,
-                "created_at": playlist.created_at,
-                "updated_at": playlist.updated_at,
-            }
-            playlist_list.append(playlist_dict)
+        playlist_list = [_playlist_to_dict(playlist) for playlist in playlists]
 
         return {
             "playlists": playlist_list,
