@@ -1,240 +1,162 @@
-VibeStream - Plataforma de Streaming Musical
-📖 Descripción
+# VibeStream - Backend
 
-VibeStream es una plataforma moderna de streaming musical que permite a los usuarios descubrir, reproducir y gestionar música. Los artistas pueden subir su música y gestionar su contenido a través de un panel especializado.
-🚀 Características Principales
-Para Usuarios
+Backend de una plataforma de streaming musical, organizado como microservicios (8 servicios propios + los paquetes compartidos que los sostienen). Este documento cubre solo el backend: no describe el frontend (`front_music_stm/`), que se levanta junto con el resto vía Docker Compose pero no es el foco de este proyecto.
 
-    🔊 Reproducción de música en alta calidad
+El objetivo de este repositorio es servir de portfolio/referencia técnica: cada decisión de arquitectura (propiedad de datos por servicio, topología de eventos, manejo de errores, testing, endurecimiento de contenedores) está documentada y justificada en `PLAN.md`, incluyendo el razonamiento de por qué se hizo así y qué se descartó explícitamente.
 
-    🔍 Búsqueda avanzada de canciones, álbumes y artistas
+## Arquitectura
 
-    📚 Biblioteca personal con playlists
+Ocho servicios, cada uno dueño exclusivo de sus propias tablas; el resto los consume vía HTTP interno o eventos de RabbitMQ, nunca leyendo la base de datos de otro servicio directamente.
 
-    👤 Perfiles de usuario personalizables
+| Servicio | Lenguaje | Puerto | Responsabilidad | Tablas propias |
+|---|---|---|---|---|
+| auth-service | Go (Gin) | 8080 | Autenticación, usuarios, JWT | `users`, `jwt.refresh_tokens` |
+| artist-service | Python (FastAPI) | 8002 | Perfiles de artista | `artists` |
+| content-service | Python (FastAPI) | 8001 | Álbumes, canciones, géneros | `albums`, `songs`, `genres`, `song_artists` |
+| playlist-service | Python (FastAPI) | 8004 | Playlists | `playlists`, `playlist_songs` |
+| history-service | Go (Gin) | 8005 | Historial de reproducción | `play_history` |
+| search-service | Python (FastAPI) | 8006 | Búsqueda difusa (rapidfuzz) | `search_index` (índice CQRS, alimentado por eventos) |
+| subscription-service | Python (FastAPI) | 8007 | Suscripciones a artistas | `artist_subscriptions` |
+| streaming-service | Go (Gin) | 8003 | Streaming de audio con soporte de rangos HTTP | (sin tablas propias, sirve archivos de content-service) |
 
-    📱 Interfaz responsive y moderna
+Servicios de infraestructura, todos en `docker-compose.yml`:
 
-Para Artistas
+| Servicio | Puerto | Propósito |
+|---|---|---|
+| postgres | 5432 | Base de datos única (un schema por dominio, un dueño por tabla) |
+| rabbitmq | 5672 / 15672 (management) | Eventos entre servicios (exchanges fanout + dead-letter queue) |
+| localstack | 4566 | Emula S3 para desarrollo local, sin credenciales AWS reales |
 
-    🎤 Panel de artista para gestión de contenido
+## Stack técnico
 
-    📤 Subida de canciones y álbumes
+- Go (Gin) para auth-service, history-service y streaming-service, con un módulo compartido (`shared-go/`) para JWT, CORS, DLQ y helpers de respuesta HTTP.
+- Python (FastAPI) para los 5 servicios restantes, con un paquete compartido instalable (`shared-python/vibestream_common`) para el mismo tipo de código repetido: middleware de auth, conexión a BD, manejo de errores, cliente HTTP interno, topología de RabbitMQ.
+- PostgreSQL como base de datos, con Alembic gestionando las migraciones de content-service y artist-service, y SQL versionado a mano para auth-service (documentado el porqué de esa elección en el propio archivo de migración).
+- RabbitMQ con exchanges fanout consistentes y una dead-letter queue compartida — un mensaje que un consumer no puede procesar no se pierde ni reintenta infinito.
+- LocalStack para emular S3 en desarrollo local (content-service, artist-service y streaming-service detectan `AWS_ENDPOINT_URL` y usan el emulador en vez de AWS real).
+- JWT (HS256) para autenticación y autorización entre clientes y servicios.
 
-    📊 Estadísticas de reproducción
+## Prerrequisitos
 
-    🎨 Personalización de perfil de artista
+- Docker y Docker Compose
+- Git
+- 4GB de RAM mínimo
+- 2GB de espacio libre en disco
 
-🛠️ Tecnologías Utilizadas
-Backend
+## Instalación y arranque
 
-    Go (Gin) - Servicios de autenticación y streaming
+El stack es autocontenido: `docker compose up` levanta Postgres, RabbitMQ y LocalStack junto con los 8 servicios, sin necesitar una base de datos externa ni credenciales AWS reales. Postgres se bootstrapea solo con el schema completo (`schema_reconstruido.sql`) la primera vez que arranca con un volumen vacío.
 
-    Python (FastAPI) - Microservicios de contenido
-
-    PostgreSQL - Base de datos principal
-
-    RabbitMQ - Message broker para comunicación entre servicios
-
-    JWT - Autenticación y autorización
-
-Frontend
-
-    React con Vite
-
-    Tailwind CSS - Estilos
-
-    Framer Motion - Animaciones
-
-    React Hook Form - Formularios
-
-📋 Prerrequisitos
-
-    Docker y Docker Compose
-
-    Git
-
-    4GB de RAM mínimo
-
-    2GB de espacio libre en disco
-
-🐳 Instalación con Docker
 1. Clonar el repositorio
-bash
 
-git clone <url-del-repositorio>
-cd streaming-backend
+```bash
+git clone https://github.com/cofferr/VibeStream.git
+cd VibeStream
+```
 
 2. Configurar variables de entorno
-bash
 
-# Copiar el archivo de ejemplo
+```bash
 cp .env.example .env
+```
 
-# Editar las variables según tu entorno
-nano .env
+Los valores por defecto de `.env.example` ya funcionan para desarrollo local (Postgres y LocalStack incluidos en el compose). Editar solo si se necesita apuntar a servicios reales (una base de datos externa, AWS real, credenciales de RabbitMQ propias).
 
 3. Levantar los servicios
-bash
 
-# Levantar todos los servicios
-docker-compose build
-docker-compose up 
+```bash
+docker compose build
+docker compose up
+```
 
-# O levantar servicios específicos
-docker-compose up -d auth-service streaming-service front_music_stm
+Para levantar solo un subconjunto:
+
+```bash
+docker compose up -d auth-service content-service postgres rabbitmq
+```
 
 4. Verificar que los servicios estén corriendo
-bash
 
-docker ps
+```bash
+docker compose ps
+```
 
-Deberías ver los siguientes servicios:
+Los 11 servicios (8 backend + postgres + rabbitmq + localstack, más el frontend) deberían quedar en estado `healthy` — cada uno tiene un `HEALTHCHECK` real, no solo "está corriendo".
 
-    auth-service (puerto 8080)
+5. Acceder a la infraestructura
 
-    streaming-service (puerto 8001)
+- RabbitMQ Management: http://localhost:15672 (usuario/contraseña definidos en `.env`, `guest`/`guest` por defecto)
+- LocalStack (S3 emulado): http://localhost:4566
+- Cada servicio expone `GET /health` en su propio puerto (ver tabla de arriba)
 
-    content-service (puerto 8002)
+## Variables de entorno
 
-    artist-service (puerto 8003)
+Ver `.env.example` para la lista completa y comentada. Los grupos principales:
 
-    playlist-service (puerto 8004)
+- `db_url_py` / `DB_URL`: conexión a Postgres (formato distinto para asyncpg vs. el driver de Go).
+- `JWT_SECRET` / `JWT_ALGORITHM`: deben coincidir en los 8 servicios (todos validan el mismo token).
+- `RABBITMQ_USER` / `RABBITMQ_PASS` / `RABBITMQ_URL`: credenciales del broker — si se cambian las dos primeras, `RABBITMQ_URL` debe actualizarse a mano (docker-compose no soporta variables derivadas de otras variables dentro del mismo `.env`).
+- `*_SERVICE_URL`: URLs internas usadas por los servicios que se llaman entre sí vía HTTP (nombres DNS de Docker Compose).
+- `AWS_ENDPOINT_URL` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` / `AWS_S3_BUCKET`: configuración de almacenamiento de archivos. Con `AWS_ENDPOINT_URL` seteado (como viene por defecto) se usa LocalStack; sin esa variable, el mismo código se conecta a AWS real.
 
-    history-service (puerto 8005)
+## Comandos útiles
 
-    search-service (puerto 8006)
-
-    subscription-service (puerto 8007)
-
-    front_music_stm (puerto 5173)
-
-    rabbitmq (puerto 15672)
-
-5. Acceder a la aplicación
-
-    Frontend: http://localhost:5173
-
-    RabbitMQ Management: http://localhost:15672 (usuario: guest, contraseña: guest)
-
-🎯 Guía de Uso
-Primeros Pasos
-
-    Registro de Usuario
-
-        Ve a http://localhost:5173
-
-        Haz clic en "Sign Up"
-
-        Completa el formulario con:
-
-            Username
-
-            Email
-
-            Fecha de nacimiento
-
-            Contraseña
-
-        Marca "Soy artista" si quieres acceso al panel de artista
-
-    Inicio de Sesión
-
-        Usa tu email y contraseña
-
-        Serás redirigido automáticamente según tu rol
-
-Para Usuarios Regulares
-Navegación Principal
-
-    Inicio: Descubre música recomendada
-
-    Buscar: Encuentra música por nombre, artista o álbum
-
-    Biblioteca: Tus playlists y música guardada
-
-    Playlists: Gestiona tus listas de reproducción
-
-Reproducción de Música
-
-    Haz clic en cualquier canción para reproducirla
-
-    Usa los controles del reproductor en la parte inferior
-
-    Controla el volumen y progreso de la canción
-
-    Salta a la siguiente/anterior canción
-
-Gestión de Playlists
-
-    Ve a "Playlists" en el menú lateral
-
-    Crea una nueva playlist con el botón "+"
-
-    Agrega canciones desde la biblioteca o resultados de búsqueda
-
-Para Artistas
-Acceso al Panel de Artista (activalo desde tu perfil)
-
-    Inicia sesión con una cuenta de artista
-
-    Ve a "Mi estudio" en el menú lateral
-
-    Gestiona tu contenido desde el panel
-
-Gestión de Álbumes
-
-    Crea álbumes desde la sección "Mis Álbumes"
-
-    Agrega canciones existentes o sube nuevas
-
-🔧 Comandos Útiles
-Docker
-bash
-
-# Ver estado de los contenedores
-docker ps
+```bash
+# Ver estado y healthchecks de los contenedores
+docker compose ps
 
 # Ver logs de un servicio específico
-docker-compose logs -f auth-service
+docker compose logs -f content-service
 
 # Reiniciar un servicio
-docker-compose restart streaming-service
+docker compose restart streaming-service
 
 # Reconstruir y levantar
-docker-compose up -d --build
+docker compose up -d --build
 
 # Detener todos los servicios
-docker-compose down
+docker compose down
 
-# Detener y eliminar volúmenes
-docker-compose down -v
-
-Desarrollo
-bash
+# Detener y eliminar volúmenes (borra los datos de Postgres/LocalStack)
+docker compose down -v
 
 # Acceder a un contenedor
-docker exec -it streaming-service sh
-
-# Ver logs en tiempo real
-docker-compose logs -f
+docker exec -it content-service sh
 
 # Ver uso de recursos
 docker stats
+```
 
-🗂️ Estructura del Proyecto
-text
-```bash
-streaming-backend/
-├── auth-service/          # Autenticación y usuarios (Go)
-├── streaming-service/     # Streaming de audio (Go)
-├── content-service/       # Gestión de contenido (Python)
-├── artist-service/        # Panel de artista (Python)
+## Testing y CI
+
+- Go: `go test ./...` en auth-service, history-service y streaming-service (usa la stdlib `testing` + `net/http/httptest`, sin framework externo). Lint con `golangci-lint` (`govet`, `staticcheck`, `errcheck`).
+- Python: `pytest` en los 5 servicios, con `pytest-asyncio` y fixtures de SQLite en memoria para los tests de repositorio (no requieren Postgres real). Lint con `ruff`.
+- `.github/workflows/ci.yml` corre ambos conjuntos de tests y linters en matrix por servicio en cada push/PR.
+
+No es cobertura exhaustiva a propósito: 1-2 tests de alto valor por servicio, enfocados en la lógica que de verdad puede romperse (errores tipados, validaciones de ownership, manejo de fallos de infraestructura), no en volumen de casos.
+
+## Estructura del proyecto
+
+```
+VibeStream/
+├── auth-service/          # Autenticación, usuarios, JWT (Go)
+├── artist-service/        # Perfiles de artista (Python)
+├── content-service/       # Álbumes, canciones, géneros (Python)
 ├── playlist-service/      # Playlists (Python)
 ├── history-service/       # Historial de reproducción (Go)
-├── search-service/        # Búsqueda (Python)
-├── subscription-service/  # Suscripciones (Python)
-├── frontend/              # Aplicación React
-├── docker-compose.yml     # Orquestación de contenedores
-└── .env                   # Variables de entorno
+├── search-service/        # Búsqueda difusa (Python)
+├── subscription-service/  # Suscripciones a artistas (Python)
+├── streaming-service/     # Streaming de audio (Go)
+├── shared-go/             # Código Go compartido (JWT, CORS, DLQ, respuestas HTTP)
+├── shared-python/         # Paquete Python compartido (vibestream_common)
+├── localstack/            # Script de inicialización del bucket S3 emulado
+├── front_music_stm/       # Frontend React (fuera del alcance de este documento)
+├── schema_reconstruido.sql  # Snapshot completo del schema, usado para bootstrapear Postgres
+├── docker-compose.yml     # Orquestación de los 11 servicios
+├── PLAN.md                # Historial completo de decisiones de arquitectura, fase por fase
+└── .env.example           # Plantilla de variables de entorno
 ```
+
+## Documentación de arquitectura
+
+`PLAN.md` contiene el historial completo de este proyecto: los problemas encontrados en la auditoría original, las decisiones tomadas para resolverlos, y la verificación real de cada cambio contra un stack Docker en funcionamiento — no solo la intención, sino qué se probó y qué quedó pendiente. Es el documento de referencia para entender por qué el código está como está.
