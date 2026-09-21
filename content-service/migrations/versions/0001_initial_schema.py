@@ -1,11 +1,11 @@
 """Schema inicial de content-service: genres, albums, songs, song_artists.
 
-Fase 6: content-service es dueño/escritor único de estas 4 tablas
-(ver PLAN.md, Fase 3). Ninguna tiene FK física a music_streaming.artists
-(dueña: artist-service) — se valida vía HTTP en tiempo de aplicación, no
-como constraint de BD (ver core/services/artist_lookup.py). Transcrito
-desde schema_reconstruido.sql, que documenta la propiedad completa del
-schema y por qué las FKs cross-servicio son "lógicas".
+content-service es dueño/escritor único de estas 4 tablas. Ninguna
+tiene FK física a music_streaming.artists (dueña: artist-service) — se
+valida vía HTTP en tiempo de aplicación, no como constraint de BD (ver
+core/services/artist_lookup.py). Transcrito desde create_database.sql,
+que documenta la propiedad completa del schema y por qué las FKs
+cross-servicio son "lógicas".
 
 Revision ID: 0001
 Revises:

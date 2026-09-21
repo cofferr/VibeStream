@@ -2,7 +2,7 @@
 
 Backend de una plataforma de streaming musical, organizado como microservicios (8 servicios propios + los paquetes compartidos que los sostienen). Este documento cubre solo el backend: no describe el frontend (`front_music_stm/`), que se levanta junto con el resto vía Docker Compose pero no es el foco de este proyecto.
 
-El objetivo de este repositorio es servir de portfolio/referencia técnica: cada decisión de arquitectura (propiedad de datos por servicio, topología de eventos, manejo de errores, testing, endurecimiento de contenedores) está documentada y justificada en `PLAN.md`, incluyendo el razonamiento de por qué se hizo así y qué se descartó explícitamente.
+El objetivo de este repositorio es servir de portfolio/referencia técnica: cada servicio es dueño exclusivo de sus propias tablas, con un patrón consistente de manejo de errores, testing y endurecimiento de contenedores repetido a propósito en los 8 servicios.
 
 ## Arquitectura
 
@@ -45,7 +45,7 @@ Servicios de infraestructura, todos en `docker-compose.yml`:
 
 ## Instalación y arranque
 
-El stack es autocontenido: `docker compose up` levanta Postgres, RabbitMQ y LocalStack junto con los 8 servicios, sin necesitar una base de datos externa ni credenciales AWS reales. Postgres se bootstrapea solo con el schema completo (`schema_reconstruido.sql`) la primera vez que arranca con un volumen vacío.
+El stack es autocontenido: `docker compose up` levanta Postgres, RabbitMQ y LocalStack junto con los 8 servicios, sin necesitar una base de datos externa ni credenciales AWS reales. Postgres se bootstrapea solo con el schema completo (`create_database.sql`) la primera vez que arranca con un volumen vacío.
 
 1. Clonar el repositorio
 
@@ -151,12 +151,7 @@ VibeStream/
 ├── shared-python/         # Paquete Python compartido (vibestream_common)
 ├── localstack/            # Script de inicialización del bucket S3 emulado
 ├── front_music_stm/       # Frontend React (fuera del alcance de este documento)
-├── schema_reconstruido.sql  # Snapshot completo del schema, usado para bootstrapear Postgres
+├── create_database.sql    # Schema completo, usado para bootstrapear Postgres
 ├── docker-compose.yml     # Orquestación de los 11 servicios
-├── PLAN.md                # Historial completo de decisiones de arquitectura, fase por fase
 └── .env.example           # Plantilla de variables de entorno
 ```
-
-## Documentación de arquitectura
-
-`PLAN.md` contiene el historial completo de este proyecto: los problemas encontrados en la auditoría original, las decisiones tomadas para resolverlos, y la verificación real de cada cambio contra un stack Docker en funcionamiento — no solo la intención, sino qué se probó y qué quedó pendiente. Es el documento de referencia para entender por qué el código está como está.

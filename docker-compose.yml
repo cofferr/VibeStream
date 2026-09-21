@@ -15,11 +15,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-vibestream}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # schema_reconstruido.sql es el snapshot completo de todas las
-      # tablas: bootstrap de una BD nueva. Alembic (content-service,
-      # artist-service) gestiona el drift incremental a partir de acá,
-      # no el bootstrap inicial — ver PLAN.md, Fase 6.
-      - ./schema_reconstruido.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # create_database.sql es el schema completo: bootstrap de una BD
+      # nueva. Alembic (content-service, artist-service) gestiona el
+      # drift incremental a partir de acá, no el bootstrap inicial.
+      - ./create_database.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vibestream} -d ${POSTGRES_DB:-vibestream}"]
       interval: 5s

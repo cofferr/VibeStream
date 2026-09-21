@@ -1,10 +1,9 @@
 """Schema inicial de artist-service: artists.
 
-Fase 6: artist-service es dueño/escritor único de esta tabla (ver
-PLAN.md, Fase 3). user_id no tiene FK física a music_streaming.users
-(dueña: auth-service) — se valida en el registro/login de auth-service,
-no como constraint de BD cross-servicio. Transcrito desde
-database/models.py.
+artist-service es dueño/escritor único de esta tabla. user_id no tiene
+FK física a music_streaming.users (dueña: auth-service) — se valida en
+el registro/login de auth-service, no como constraint de BD
+cross-servicio. Transcrito desde database/models.py.
 
 Revision ID: 0001
 Revises:

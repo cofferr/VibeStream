@@ -1,13 +1,13 @@
 -- ============================================================================
 -- auth-service — schema inicial (users, jwt.refresh_tokens)
 -- ============================================================================
--- Fase 6: auth-service es Go y no tiene un ORM con auto-migración (no hay
+-- auth-service es Go y no tiene un ORM con auto-migración (no hay
 -- AutoMigrate en el código, ver models/user.go y models/refresh_token.go).
--- Decisión explícita de esta fase, no ambigua: en vez de introducir
--- Alembic (Python) para gestionar el schema de un servicio Go — lo que
--- obligaría a mantener modelos SQLAlchemy espejo sin ningún propósito en
--- runtime, solo para tener algo que autogenerar — este servicio usa SQL
--- crudo versionado y numerado, aplicado manualmente:
+-- Decisión explícita, no ambigua: en vez de introducir Alembic (Python)
+-- para gestionar el schema de un servicio Go — lo que obligaría a
+-- mantener modelos SQLAlchemy espejo sin ningún propósito en runtime,
+-- solo para tener algo que autogenerar — este servicio usa SQL crudo
+-- versionado y numerado, aplicado manualmente:
 --
 --     psql "$DB_URL" -f auth-service/migrations/0001_init_users_and_refresh_tokens.sql
 --
@@ -20,8 +20,8 @@
 -- resolver (con golang-migrate u otra herramienta nativa de Go) si el
 -- número de migraciones de este servicio crece.
 --
--- Transcrito desde schema_reconstruido.sql. auth-service es el único
--- dueño/escritor de users y jwt.refresh_tokens (Fase 3).
+-- Transcrito desde create_database.sql. auth-service es el único
+-- dueño/escritor de users y jwt.refresh_tokens.
 -- ============================================================================
 
 CREATE SCHEMA IF NOT EXISTS music_streaming;
