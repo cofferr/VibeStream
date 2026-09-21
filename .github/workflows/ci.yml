@@ -19,6 +19,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.work
+          # Por default setup-go busca go.sum en la raíz del repo para el
+          # cache de módulos; acá vive uno por servicio (más shared-go),
+          # así que sin esto el cache siempre fallaba (no rompía el build,
+          # solo lo hacía más lento).
+          cache-dependency-path: |
+            ${{ matrix.service }}/go.sum
+            shared-go/go.sum
 
       # go.work referencia ./shared-go y los 3 servicios Go desde la raíz,
       # así que build/vet/test corren dentro del directorio del servicio
@@ -36,8 +43,14 @@ jobs:
         working-directory: ${{ matrix.service }}
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
+          # golangci-lint-action@v6 no soporta golangci-lint v2 (falla con
+          # "invalid version string" en runtime, no en desarrollo local
+          # porque ahí se usó la imagen Docker directamente, sin pasar por
+          # esta acción — encontrado recién al ver el primer run real de
+          # GitHub Actions, exactamente lo que Fase 5 dejó como pendiente
+          # de confirmar). v7 sí soporta v2.
           version: v2.1.6
           working-directory: ${{ matrix.service }}
           # .golangci.yml vive en la raíz del repo; golangci-lint lo
