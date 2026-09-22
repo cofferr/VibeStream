@@ -72,7 +72,7 @@ services:
 
   artist-service:
     build:
-      context: .
+      context: ./backend
       dockerfile: artist-service/Dockerfile
       args:
         - SERVICE_NAME=artist-service
@@ -94,7 +94,7 @@ services:
 
   content-service:
     build:
-      context: .
+      context: ./backend
       dockerfile: content-service/Dockerfile
       args:
         - SERVICE_NAME=content-service
@@ -116,7 +116,7 @@ services:
 
   playlist-service:
     build:
-      context: .
+      context: ./backend
       dockerfile: playlist-service/Dockerfile
       args:
         - SERVICE_NAME=playlist-service
@@ -136,7 +136,7 @@ services:
 
   search-service:
     build:
-      context: .
+      context: ./backend
       dockerfile: search-service/Dockerfile
       args:
         - SERVICE_NAME=search-service
@@ -156,7 +156,7 @@ services:
 
   subscription-service:
     build:
-      context: .
+      context: ./backend
       dockerfile: subscription-service/Dockerfile
       args:
         - SERVICE_NAME=subscription-service
@@ -176,7 +176,7 @@ services:
 
   auth-service:
     build:
-      context: .
+      context: ./backend
       dockerfile: auth-service/Dockerfile
       args:
         - SERVICE_NAME=auth-service
@@ -196,7 +196,7 @@ services:
 
   history-service:
     build:
-      context: .
+      context: ./backend
       dockerfile: history-service/Dockerfile
       args:
         - SERVICE_NAME=history-service
@@ -216,7 +216,7 @@ services:
 
   streaming-service:
     build:
-      context: .
+      context: ./backend
       dockerfile: streaming-service/Dockerfile
       args:
         - SERVICE_NAME=streaming-service

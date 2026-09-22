@@ -137,21 +137,26 @@ No es cobertura exhaustiva a propósito: 1-2 tests de alto valor por servicio, e
 
 ## Estructura del proyecto
 
+Todo el código de los 8 servicios y lo que comparten vive bajo `backend/` — el build context de cada Dockerfile pasó de la raíz del repo a `./backend` para reflejarlo (ver `docker-compose.yml`), sin tocar una sola línea de los Dockerfiles: siguen copiando rutas relativas a su propio contexto.
+
 ```
 VibeStream/
-├── auth-service/          # Autenticación, usuarios, JWT (Go)
-├── artist-service/        # Perfiles de artista (Python)
-├── content-service/       # Álbumes, canciones, géneros (Python)
-├── playlist-service/      # Playlists (Python)
-├── history-service/       # Historial de reproducción (Go)
-├── search-service/        # Búsqueda difusa (Python)
-├── subscription-service/  # Suscripciones a artistas (Python)
-├── streaming-service/     # Streaming de audio (Go)
-├── shared-go/             # Código Go compartido (JWT, CORS, DLQ, respuestas HTTP)
-├── shared-python/         # Paquete Python compartido (vibestream_common)
-├── localstack/            # Script de inicialización del bucket S3 emulado
-├── front_music_stm/       # Frontend React (fuera del alcance de este documento)
-├── create_database.sql    # Schema completo, usado para bootstrapear Postgres
-├── docker-compose.yml     # Orquestación de los 11 servicios
-└── .env.example           # Plantilla de variables de entorno
+├── backend/
+│   ├── auth-service/          # Autenticación, usuarios, JWT (Go)
+│   ├── artist-service/        # Perfiles de artista (Python)
+│   ├── content-service/       # Álbumes, canciones, géneros (Python)
+│   ├── playlist-service/      # Playlists (Python)
+│   ├── history-service/       # Historial de reproducción (Go)
+│   ├── search-service/        # Búsqueda difusa (Python)
+│   ├── subscription-service/  # Suscripciones a artistas (Python)
+│   ├── streaming-service/     # Streaming de audio (Go)
+│   ├── shared-go/             # Código Go compartido (JWT, CORS, DLQ, respuestas HTTP)
+│   ├── shared-python/         # Paquete Python compartido (vibestream_common)
+│   ├── go.work / go.work.sum  # Workspace Go que une los 3 servicios Go + shared-go
+│   └── .golangci.yml          # Config de lint compartida por los 3 servicios Go
+├── localstack/             # Script de inicialización del bucket S3 emulado
+├── front_music_stm/        # Frontend React (fuera del alcance de este documento)
+├── create_database.sql     # Schema completo, usado para bootstrapear Postgres
+├── docker-compose.yml      # Orquestación de los 11 servicios
+└── .env.example            # Plantilla de variables de entorno
 ```

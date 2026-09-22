@@ -13,37 +13,37 @@ env/
 # Ignorar archivos de entorno
 .env
 # Ignorar archivos de entorno específicos de servicios
-auth-service/.env
-artist-service/.env
-content-service/.env
-history-service/.env
-playlist-service/.env
-streaming-service/.env
-search-service/.env
-subscription-service/.env
+backend/auth-service/.env
+backend/artist-service/.env
+backend/content-service/.env
+backend/history-service/.env
+backend/playlist-service/.env
+backend/streaming-service/.env
+backend/search-service/.env
+backend/subscription-service/.env
 
 # Ignorar entornos virtuales de Python
 **/.venv/
 **/venv/
 **/__pycache__/
-artist-service/artist
-auth-service/auth
-content-service/content
-history-service/history
-playlist-service/playlist
-streaming-service/streaming
-search-service/search
-subscription-service/subscription
+backend/artist-service/artist
+backend/auth-service/auth
+backend/content-service/content
+backend/history-service/history
+backend/playlist-service/playlist
+backend/streaming-service/streaming
+backend/search-service/search
+backend/subscription-service/subscription
 
 #ignorar carpetas de __pycache__
-artist-service/__pycache__/
-auth-service/__pycache__/
-content-service/__pycache__/
-history-service/__pycache__/
-playlist-service/__pycache__/
-streaming-service/__pycache__/
-search-service/__pycache__/
-subscription-service/__pycache__/
+backend/artist-service/__pycache__/
+backend/auth-service/__pycache__/
+backend/content-service/__pycache__/
+backend/history-service/__pycache__/
+backend/playlist-service/__pycache__/
+backend/streaming-service/__pycache__/
+backend/search-service/__pycache__/
+backend/subscription-service/__pycache__/
 
 # Claude Code internal files
 .claude/

@@ -18,29 +18,29 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.work
+          go-version-file: backend/go.work
           # Por default setup-go busca go.sum en la raíz del repo para el
           # cache de módulos; acá vive uno por servicio (más shared-go),
           # así que sin esto el cache siempre fallaba (no rompía el build,
           # solo lo hacía más lento).
           cache-dependency-path: |
-            ${{ matrix.service }}/go.sum
-            shared-go/go.sum
+            backend/${{ matrix.service }}/go.sum
+            backend/shared-go/go.sum
 
-      # go.work referencia ./shared-go y los 3 servicios Go desde la raíz,
-      # así que build/vet/test corren dentro del directorio del servicio
-      # pero resuelven vibestream/shared vía el workspace.
+      # go.work referencia ./shared-go y los 3 servicios Go desde
+      # backend/, así que build/vet/test corren dentro del directorio del
+      # servicio pero resuelven vibestream/shared vía el workspace.
       - name: go build
         run: go build ./...
-        working-directory: ${{ matrix.service }}
+        working-directory: backend/${{ matrix.service }}
 
       - name: go vet
         run: go vet ./...
-        working-directory: ${{ matrix.service }}
+        working-directory: backend/${{ matrix.service }}
 
       - name: go test
         run: go test ./... -v
-        working-directory: ${{ matrix.service }}
+        working-directory: backend/${{ matrix.service }}
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
@@ -52,9 +52,9 @@ jobs:
           # GitHub Actions, exactamente lo que Fase 5 dejó como pendiente
           # de confirmar). v7 sí soporta v2.
           version: v2.1.6
-          working-directory: ${{ matrix.service }}
-          # .golangci.yml vive en la raíz del repo; golangci-lint lo
-          # encuentra solo caminando hacia arriba desde working-directory.
+          working-directory: backend/${{ matrix.service }}
+          # .golangci.yml vive en backend/; golangci-lint lo encuentra
+          # solo caminando hacia arriba desde working-directory.
 
   python:
     name: python / ${{ matrix.service }}
@@ -76,7 +76,7 @@ jobs:
           python-version: "3.12"
 
       - name: Instalar dependencias
-        working-directory: ${{ matrix.service }}
+        working-directory: backend/${{ matrix.service }}
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
           # vibestream_common no está en requirements.txt (se instala vía
@@ -85,11 +85,11 @@ jobs:
           pip install -e ../shared-python
 
       - name: ruff check
-        working-directory: ${{ matrix.service }}
+        working-directory: backend/${{ matrix.service }}
         run: ruff check .
 
       - name: pytest
-        working-directory: ${{ matrix.service }}
+        working-directory: backend/${{ matrix.service }}
         # "python -m pytest" (no el script "pytest" suelto): agrega el
         # directorio del servicio a sys.path, que es lo que permite que
         # los tests importen paquetes locales como "database"/"config"
